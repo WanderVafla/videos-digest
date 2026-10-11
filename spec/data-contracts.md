@@ -84,8 +84,10 @@ required; no extra fields (`additionalProperties: false`).
   (`topics.check_new_topics`).
 - `analysis_language` is not in the JSON; it is the `analyses.analysis_language` column.
 - Old `summarize_v1` rows (fields `summary_ru`, `text_ru`, `why_ru`, `verdict_reason_ru`, topics
-  as plain strings) may exist in a local DB. `export-review` and `calibrate` read only the current
-  prompt version; topic usage and `topics merge` read all rows (see status.md, open questions).
+  as plain strings) may exist in a local DB. Every reader of `analyses` filters by prompt version
+  (`export-review`, `calibrate`, topic usage, `topics`, `topics merge`: the current one). Stored
+  topics are read via `topics.stored_topic`, which accepts both shapes. `video-digest prune
+  --prompt-version summarize_v1 --yes` deletes such rows.
 
 ## SQLite: data/db.sqlite (src/video_digest/db.py, not in git)
 
@@ -118,7 +120,8 @@ Tables are created on connect; missing columns are added by `db.MIGRATIONS`.
 | `analysis_language` | effective ISO 639-1 code |
 
 Saving deletes rows with the same (video, prompt version, model, analysis language) or the same
-cache key. Readers take the newest row per video (`created_at`, then `id`).
+cache key. Readers take the newest row per video (`created_at`, then `id`) within one prompt
+version. `prune --prompt-version V --yes` deletes all rows of V (never the current version).
 
 **translations**: display-translation cache.
 
@@ -135,15 +138,17 @@ cache key. Readers take the newest row per video (`created_at`, then `id`).
   `translate.translation_cache_key`.
 - Not in any key: `topics.txt`, `DIGEST_LANGUAGE`, demo hints, glossary.
 
-## topics.txt (tracked)
+## topics.txt (local, not in git)
 
 One `slug: description` per line, description in English. Slug: `^[a-z0-9]+(-[a-z0-9]+)*$`, 1-3
 words (enforced for new slugs). Lines that do not match are skipped; on duplicate slugs the first
 wins. Missing or empty file = empty taxonomy. Rewritten atomically (`topics.txt.tmp` + rename).
+Git-ignored: each checkout builds its own list during `summarize`, starting empty.
 
 ## data/review_blind.md (tracked once created)
 
 ```
+<!-- exported: model=<model or "any"> prompt_version=<prompt_version> -->
 # Blind review (<prompt_version>, shown in <digest_language>)
 ...instructions...
 
@@ -161,6 +166,7 @@ my_verdict: ?                       (watch_full | summary_enough | skip)
 my_scores: value=? density=? demo=? (optional, 0-10 each)
 ```
 
+The first line records what was exported (`export-review --model`); it is not parsed.
 Entries start at `## `. Parsed keys (line start only): `video_id`, `prompt_version`, `my_verdict`,
 `my_scores`. Entries with an invalid `my_verdict` (e.g. `?`) are ignored; `?` scores are skipped.
 Re-export keeps filled `my_verdict`/`my_scores` by (video_id, prompt_version).
@@ -179,9 +185,10 @@ Read only in `src/video_digest/config.py`; missing keys never raise. Defaults: `
 | Key | Used by |
 |---|---|
 | `LLM_BASE_URL`, `LLM_API_KEY` | `llm.get_client` |
-| `LLM_MODEL_FAST` | `summarize`, translation, `calibrate` default |
+| `LLM_MODEL_FAST` | `summarize`, translation, `calibrate` and `export-review` default model |
 | `LLM_MODEL_SMART` | only to choose `LLM_REASONING_EFFORT_SMART`; stages 4-5 later |
 | `LLM_REASONING_EFFORT_FAST`, `LLM_REASONING_EFFORT_SMART` | `llm.default_reasoning_effort` |
+| `LLM_MAX_OUTPUT_TOKENS` | int, default 14000; `max_tokens` of every `llm()` call (reasoning included); `0` = not sent |
 | `ANALYSIS_LANGUAGE` | ISO 639-1 or `source`; `summarize` |
 | `DIGEST_LANGUAGE` | ISO 639-1; `export-review` |
 | `QDRANT_URL` | not used yet (stage 3) |

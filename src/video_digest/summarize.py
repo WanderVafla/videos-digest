@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from video_digest import config, db, topics
 from video_digest.features import DemoHints, compute_hints
 from video_digest.languages import base_code, effective_language, language_name
-from video_digest.llm import LLMResult, Message, llm
+from video_digest.llm import LLMResult, Message, is_fatal, llm
 from video_digest.prompts import fill, load_glossary, load_prompt_sections
 from video_digest.schema import (
     ALLOWED_TIMESTAMPS,
@@ -63,6 +63,17 @@ class Outcome(BaseModel):
     cost_usd: float | None = None
 
 
+class RunStopped(Exception):
+    """A fatal API error (401/402/403): the run stops; analyses saved before it stay in the DB."""
+
+    def __init__(self, video_id: str, outcomes: list[Outcome], cause: BaseException) -> None:
+        super().__init__(f"stopped on {video_id}: {type(cause).__name__}: {cause}")
+        self.video_id = video_id
+        self.outcomes = outcomes  # finished before the stop
+        self.status: int | None = getattr(cause, "status_code", None)
+        self.cause = cause
+
+
 class TopicState(BaseModel):
     """topics.txt contents plus usage counts from stored analyses, at the start of a video."""
 
@@ -72,7 +83,7 @@ class TopicState(BaseModel):
 
     @classmethod
     def load(cls, path: Path, conn: sqlite3.Connection) -> "TopicState":
-        return cls(path=path, known=topics.load_topics(path), usage=topics.stored_usage(conn))
+        return cls(path=path, known=topics.load_topics(path), usage=topics.stored_usage(conn, PROMPT_VERSION))
 
 
 # --- prompt ------------------------------------------------------------------
@@ -268,7 +279,8 @@ def summarize_all(
 
     Videos are processed sequentially; new topics are appended to topics.txt after each video,
     so results depend on processing order. `limit` counts videos that need an API call.
-    A failure on one video is recorded and the run continues.
+    A failure on one video is recorded and the run continues, except fatal API errors
+    (401/402/403), which raise RunStopped.
     """
     setting = analysis_language or config.ANALYSIS_LANGUAGE
     topics_path = topics_path or config.TOPICS_FILE
@@ -290,6 +302,8 @@ def summarize_all(
         try:
             result = analyze(t, model, language, TopicState.load(topics_path, conn), llm_fn)
         except Exception as exc:
+            if is_fatal(exc):
+                raise RunStopped(t.video_id, outcomes, exc) from exc
             outcome = Outcome(video_id=t.video_id, status="error", detail=f"{type(exc).__name__}: {exc}")
         else:
             topics.append_topics(topics_path, result.new_topics)

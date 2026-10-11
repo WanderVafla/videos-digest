@@ -96,11 +96,14 @@ def test_prompt_block_order_and_cap() -> None:
     assert lines[:3] == ["- t7 (3): topic 7", "- t5 (1): topic 5", "- t0 (0): topic 0"]
 
 
+PV = "summarize_v2"
+
+
 def store(conn: sqlite3.Connection, vid: str, slugs: list[str], data: dict[str, Any]) -> None:
     db.upsert_video(conn, db.VideoRow(id=vid, title=vid, channel=None, url="u", upload_date=None,
                                       duration_seconds=None, source_language="en", transcript_path="p"))  # fmt: skip
     analysis = dict(data, topics=[{"slug": s, "description": f"desc {s}"} for s in slugs])
-    db.save_analysis(conn, db.AnalysisRow(video_id=vid, prompt_version="v", model="m", cache_key=vid,
+    db.save_analysis(conn, db.AnalysisRow(video_id=vid, prompt_version=PV, model="m", cache_key=vid,
                                           analysis_json=json.dumps(analysis), hints_json="{}"))  # fmt: skip
 
 
@@ -112,13 +115,13 @@ def test_merge(tmp_path: Path, analysis_data: dict[str, Any]) -> None:
     store(conn, "v2", ["agents", "ai-agent", "mcp"], analysis_data)
     store(conn, "v3", ["mcp"], analysis_data)
 
-    assert topics.merge(conn, path, "agents", "ai-agent") == 2
-    stored = [json.loads(j)["topics"] for j in db.latest_analysis_json_per_video(conn)]
+    assert topics.merge(conn, path, "agents", "ai-agent", PV) == 2
+    stored = [json.loads(j)["topics"] for j in db.latest_analysis_json_per_video(conn, PV)]
     slugs = sorted(tuple(t["slug"] for t in ts) for ts in stored)
     assert slugs == [("ai-agent", "mcp"), ("ai-agent", "mcp"), ("mcp",)]
     assert {"slug": "ai-agent", "description": "Agents"} in stored[0] + stored[1]
     assert topics.load_topics(path) == {"ai-agent": "Agents", "mcp": "Model Context Protocol"}
-    assert topics.stored_usage(conn) == {"ai-agent": 2, "mcp": 3}
+    assert topics.stored_usage(conn, PV) == {"ai-agent": 2, "mcp": 3}
 
 
 def test_merge_into_unknown_slug_renames(tmp_path: Path, analysis_data: dict[str, Any]) -> None:
@@ -126,7 +129,56 @@ def test_merge_into_unknown_slug_renames(tmp_path: Path, analysis_data: dict[str
     path = tmp_path / "topics.txt"
     path.write_text("llms: Large language models\n")
     store(conn, "v1", ["llms"], analysis_data)
-    topics.merge(conn, path, "llms", "llm-models")
+    topics.merge(conn, path, "llms", "llm-models", PV)
     assert topics.load_topics(path) == {"llm-models": "Large language models"}
     with pytest.raises(ValueError, match="invalid slug"):
-        topics.merge(conn, path, "llm-models", "Bad Slug")
+        topics.merge(conn, path, "llm-models", "Bad Slug", PV)
+
+
+
+def store_raw(conn: sqlite3.Connection, vid: str, prompt_version: str, analysis_json: str) -> None:
+    db.upsert_video(conn, db.VideoRow(id=vid, title=vid, channel=None, url="u", upload_date=None,
+                                      duration_seconds=None, source_language="en", transcript_path="p"))  # fmt: skip
+    db.save_analysis(conn, db.AnalysisRow(video_id=vid, prompt_version=prompt_version, model="m",
+                                          cache_key=f"{vid}-{prompt_version}", analysis_json=analysis_json,
+                                          hints_json="{}"))  # fmt: skip
+
+
+def test_stored_topic_normalizes_legacy_shapes() -> None:
+    assert topics.stored_topic({"slug": "mcp", "description": "Protocol"}) == ("mcp", "Protocol")
+    assert topics.stored_topic({"slug": "mcp"}) == ("mcp", "")
+    assert topics.stored_topic("mcp") == ("mcp", "")  # summarize_v1
+    for broken in ("", None, 3, {"description": "no slug"}, {"slug": 5}, ["mcp"]):
+        assert topics.stored_topic(broken) is None
+    assert topics.stored_topics('{"topics": ["a", {"slug": "b", "description": "B"}, 7]}') == [("a", ""), ("b", "B")]
+    assert topics.stored_topics("not json") == []
+    assert topics.stored_topics('{"topics": "a"}') == []
+    assert topics.stored_topics("[1, 2]") == []
+
+
+def test_merge_and_usage_ignore_other_prompt_versions(tmp_path: Path, analysis_data: dict[str, Any]) -> None:
+    conn = db.connect(tmp_path / "db.sqlite")
+    path = tmp_path / "topics.txt"
+    path.write_text("agents: Agents\nai-agent: AI agents\n")
+    store(conn, "v1", ["agents", "mcp"], analysis_data)
+    legacy = json.dumps({"summary_ru": "...", "topics": ["agents", "mcp"]})
+    store_raw(conn, "v1", "summarize_v1", legacy)  # newer than the v2 row
+    store_raw(conn, "v2", "summarize_v1", legacy)
+
+    assert topics.stored_usage(conn, PV) == {"agents": 1, "mcp": 1}
+    assert topics.stored_usage(conn, "summarize_v1") == {"agents": 2, "mcp": 2}  # legacy rows readable, no crash
+    assert topics.merge(conn, path, "agents", "ai-agent", PV) == 1
+    rows = dict(conn.execute("SELECT video_id || '/' || prompt_version, analysis_json FROM analyses").fetchall())
+    assert rows["v1/summarize_v1"] == legacy and rows["v2/summarize_v1"] == legacy  # untouched
+    assert [t["slug"] for t in json.loads(rows["v1/" + PV])["topics"]] == ["ai-agent", "mcp"]
+
+
+def test_merge_on_legacy_version_does_not_crash(tmp_path: Path) -> None:
+    conn = db.connect(tmp_path / "db.sqlite")
+    path = tmp_path / "topics.txt"
+    path.write_text("agents: Agents\n")
+    store_raw(conn, "v1", "summarize_v1", json.dumps({"topics": ["agents", "mcp", 3]}))
+    store_raw(conn, "v2", "summarize_v1", "{broken")
+    assert topics.merge(conn, path, "agents", "ai-agent", "summarize_v1") == 1
+    stored = json.loads(conn.execute("SELECT analysis_json FROM analyses WHERE video_id = 'v1'").fetchone()[0])
+    assert stored["topics"] == [{"slug": "ai-agent", "description": "Agents"}, {"slug": "mcp", "description": ""}]

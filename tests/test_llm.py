@@ -15,17 +15,23 @@ from video_digest.schema import VideoAnalysis
 MODEL = "anthropic/claude-haiku-5.5"
 
 
-def response(content: str, tokens_in: int = 100, tokens_out: int = 20, cost: float | None = None) -> Any:
+def response(
+    content: str, tokens_in: int = 100, tokens_out: int = 20, cost: float | None = None, finish_reason: str = "stop"
+) -> Any:
     usage = SimpleNamespace(prompt_tokens=tokens_in, completion_tokens=tokens_out)
     if cost is not None:
         usage.cost = cost
-    return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))], usage=usage)
+    choice = SimpleNamespace(message=SimpleNamespace(content=content), finish_reason=finish_reason)
+    return SimpleNamespace(choices=[choice], usage=usage)
 
 
 def api_error(status: int, message: str) -> openai.APIStatusError:
     request = httpx2.Request("POST", "https://llm.test/v1/chat/completions")
     classes: dict[int, type[openai.APIStatusError]] = {
         400: openai.BadRequestError,
+        401: openai.AuthenticationError,
+        402: openai.APIStatusError,
+        403: openai.PermissionDeniedError,
         404: openai.NotFoundError,
         429: openai.RateLimitError,
         500: openai.InternalServerError,
@@ -73,6 +79,7 @@ def test_structured_output_first_try(analysis_data: dict[str, Any]) -> None:
     assert req["response_format"]["type"] == "json_schema"
     assert req["response_format"]["json_schema"]["strict"] is True
     assert req["temperature"] == 0
+    assert req["max_tokens"] == llm_module.config.LLM_MAX_OUTPUT_TOKENS
     assert req["extra_body"] == {"provider": {"require_parameters": True}, "reasoning": {"effort": "low"}}
     assert req["messages"] == MESSAGES  # schema not pasted into the prompt in json_schema mode
 
@@ -124,8 +131,8 @@ def test_no_reasoning_when_effort_empty(analysis_data: dict[str, Any]) -> None:
 def test_unfixable_rejection_raises() -> None:
     client = FakeClient([api_error(400, "bad request")] * 6)
     with pytest.raises(openai.BadRequestError):
-        llm(MESSAGES, MODEL, client=client, reasoning_effort="")  # text mode, then temperature dropped, then give up
-    assert len(client.requests) == 2
+        llm(MESSAGES, MODEL, client=client, reasoning_effort="")  # text mode; temperature, then max_tokens dropped
+    assert len(client.requests) == 3
 
 
 def test_validation_error_is_fed_back(analysis_data: dict[str, Any]) -> None:
@@ -204,3 +211,72 @@ def test_extract_json() -> None:
     assert extract_json('Sure! Here it is: {"a": {"b": 2}} Hope it helps.') == {"a": {"b": 2}}
     with pytest.raises(json.JSONDecodeError):
         extract_json("no json")
+
+
+# --- output token limit ---------------------------------------------------------------
+
+
+def test_max_tokens_setting_and_override(analysis_data: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(llm_module.config, "LLM_MAX_OUTPUT_TOKENS", 5000)
+    client = FakeClient([response(json.dumps(analysis_data)), response("ok"), response("ok")])
+    call(client)
+    llm(MESSAGES, MODEL, client=client, reasoning_effort="", max_tokens=777)
+    llm(MESSAGES, MODEL, client=client, reasoning_effort="", max_tokens=0)  # 0 = not sent
+    assert [r.get("max_tokens") for r in client.requests] == [5000, 777, None]
+
+
+def test_rejected_max_tokens_is_dropped(analysis_data: dict[str, Any]) -> None:
+    client = FakeClient(
+        [api_error(400, "Unsupported parameter: 'max_tokens' is not supported with this model."), response(json.dumps(analysis_data))]
+    )
+    result = call(client, max_tokens=4000)
+    assert result.parsed is not None
+    assert client.requests[0]["max_tokens"] == 4000 and "max_tokens" not in client.requests[1]
+    assert client.requests[1]["temperature"] == 0
+    assert client.requests[1]["response_format"]["type"] == "json_schema"  # format and other params kept
+
+
+def test_truncated_answer_is_retried_with_doubled_limit(analysis_data: dict[str, Any]) -> None:
+    partial = json.dumps(analysis_data)[:200]  # cut-off JSON must never be parsed or fed back
+    client = FakeClient([response(partial, 100, 4000, finish_reason="length"), response(json.dumps(analysis_data), 100, 900)])
+    result = call(client, max_tokens=4000)
+    assert result.parsed is not None
+    assert [r["max_tokens"] for r in client.requests] == [4000, 8000]
+    assert client.requests[1]["messages"] == MESSAGES  # same request, no validation feedback
+    assert result.tokens_out == 4900  # the truncated answer was paid for too
+
+
+def test_truncation_limit_is_capped(analysis_data: dict[str, Any]) -> None:
+    client = FakeClient([response("{", finish_reason="length"), response(json.dumps(analysis_data))])
+    call(client, max_tokens=40_000)
+    assert [r["max_tokens"] for r in client.requests] == [40_000, llm_module.MAX_OUTPUT_TOKENS_CAP]
+
+
+def test_truncated_twice_fails() -> None:
+    client = FakeClient([response("{", finish_reason="length")] * 2)
+    with pytest.raises(llm_module.LLMTruncatedError, match="truncated"):
+        call(client, max_tokens=4000)
+    assert len(client.requests) == 2
+
+
+def test_truncated_without_a_limit_fails_at_once() -> None:
+    client = FakeClient([response("{", finish_reason="length")])
+    with pytest.raises(llm_module.LLMTruncatedError):
+        call(client, max_tokens=0)
+    assert len(client.requests) == 1
+
+
+@pytest.mark.parametrize("status", [401, 402, 403])
+def test_fatal_status_is_raised_unchanged(status: int) -> None:
+    client = FakeClient([api_error(status, "nope")])
+    with pytest.raises(openai.APIStatusError) as info:
+        call(client)
+    assert llm_module.is_fatal(info.value)
+    assert len(client.requests) == 1  # no retry, no degrade
+
+
+def test_transient_and_rejected_errors_are_not_fatal() -> None:
+    assert not llm_module.is_fatal(api_error(429, "slow down"))
+    assert not llm_module.is_fatal(api_error(500, "boom"))
+    assert not llm_module.is_fatal(api_error(400, "bad"))
+    assert not llm_module.is_fatal(ValueError("x"))

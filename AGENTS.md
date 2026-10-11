@@ -23,6 +23,7 @@ uv run video-digest export-review                     review files (paid if it t
 uv run video-digest calibrate                         blind ratings vs the model
 uv run video-digest topics                            topic slugs with usage counts
 uv run video-digest topics merge OLD NEW              merge topic OLD into NEW
+uv run video-digest prune --prompt-version V          list analyses of V (deletes only with --yes)
 ```
 
 ## What to read when

@@ -259,3 +259,30 @@ def test_calibrate_filters_by_model(tmp_path: Path, conn: sqlite3.Connection, an
     assert (fast.verdict_agreement, smart.verdict_agreement, none.matched) == (100.0, 0.0, 0)
     assert format_report(fast).splitlines()[0] == f"Compared: model=fast prompt_version={PV}"
     assert format_report(calibrate(ratings, {}, PV)).splitlines()[0] == f"Compared: model=any prompt_version={PV}"
+
+
+def test_export_filters_by_model_and_names_it(
+    tmp_path: Path, conn: sqlite3.Connection, analysis_data: dict[str, Any]
+) -> None:
+    store(conn, "aaaaaaaaaaa", analysis(analysis_data, "watch_full", 9, 9, 9), model="fast")
+    other = dict(analysis_data, summary=analysis_data["summary"].replace("OpenCode", "OtherTool"))
+    store(conn, "aaaaaaaaaaa", analysis(other, "skip", 1, 1, 1), model="smart")  # newer, other model
+    store(conn, "bbbbbbbbbbb", analysis(other, "skip", 1, 1, 1), model="smart")
+    blind, model = tmp_path / "review_blind.md", tmp_path / "review_model.md"
+
+    assert export_review(conn, PV, blind, model, display_language="en", translator=no_translation, model="fast") == 1
+    text = blind.read_text(encoding="utf-8")
+    assert text.splitlines()[0] == f"<!-- exported: model=fast prompt_version={PV} -->"
+    assert "OpenCode" in text and "OtherTool" not in text and "bbbbbbbbbbb" not in text
+    assert "model: fast;" in model.read_text(encoding="utf-8")
+    assert len(parse_blind(text.replace("my_verdict: ?", "my_verdict: skip"))) == 1  # header line is not an entry
+
+    # ratings survive a re-export with another model, matched by video id
+    blind.write_text(text.replace("my_verdict: ?", "my_verdict: watch_full"), encoding="utf-8")
+    assert export_review(conn, PV, blind, model, display_language="en", translator=no_translation, model="smart") == 2
+    text = blind.read_text(encoding="utf-8")
+    assert text.splitlines()[0] == f"<!-- exported: model=smart prompt_version={PV} -->"
+    assert "OtherTool" in text and text.count("my_verdict: watch_full") == 1 and text.count("my_verdict: ?") == 1
+
+    export_review(conn, PV, blind, model, display_language="en", translator=no_translation)
+    assert blind.read_text(encoding="utf-8").splitlines()[0] == f"<!-- exported: model=any prompt_version={PV} -->"

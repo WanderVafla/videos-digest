@@ -27,6 +27,10 @@ LLM_MODEL_SMART: str = os.getenv("LLM_MODEL_SMART", "")  # cluster naming, diges
 # Empty = do not send the parameter.
 LLM_REASONING_EFFORT_FAST: str = os.getenv("LLM_REASONING_EFFORT_FAST", "low")
 LLM_REASONING_EFFORT_SMART: str = os.getenv("LLM_REASONING_EFFORT_SMART", "medium")
+# max_tokens for every LLM call; reasoning tokens count as output. Without it OpenRouter reserves
+# credit for the model's maximum output (65,536) and answers 402 on a low balance.
+# Default: 3x the largest stored tokens_out (4622), rounded up to 1000 (spec/decisions.md). 0 = not sent.
+LLM_MAX_OUTPUT_TOKENS: int = int(os.getenv("LLM_MAX_OUTPUT_TOKENS") or 14000)
 
 # Language of generated and stored analyses: ISO 639-1 code ("en", "ru", ...) or "source" (video's language).
 ANALYSIS_LANGUAGE: str = os.getenv("ANALYSIS_LANGUAGE", "en").strip().lower()

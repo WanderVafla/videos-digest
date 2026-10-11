@@ -101,9 +101,14 @@ def blind_item(
 
 
 def render_blind(
-    items: list[BlindItem], prompt_version: str, keep: dict[tuple[str, str], tuple[str, str]], language: str
+    items: list[BlindItem],
+    prompt_version: str,
+    keep: dict[tuple[str, str], tuple[str, str]],
+    language: str,
+    model: str | None = None,
 ) -> str:
     lines = [
+        f"<!-- exported: model={model or 'any'} prompt_version={prompt_version} -->",
         f"# Blind review ({prompt_version}, shown in {language})",
         "",
         "Rate from the summary (and the video if you like) before looking at review_model.md.",
@@ -162,8 +167,11 @@ def export_review(
     *,
     display_language: str | None = None,
     translator: Translator | None = None,
+    model: str | None = None,
 ) -> int:
     """Write both review files; ratings already filled in blind_path are preserved. Returns the entry count.
+
+    Only analyses of `model` are exported (None: newest per video from any model).
 
     The blind file shows summary and key points in display_language (default DIGEST_LANGUAGE);
     review_model.md stays in the analysis language.
@@ -177,12 +185,12 @@ def export_review(
 
         translator = translate_with_cache
 
-    rows = db.latest_analyses(conn, prompt_version)
+    rows = db.latest_analyses(conn, prompt_version, model)
     parsed = [(video, row, parse_analysis(row)) for video, row in rows]
     items = [blind_item(video, row, a, language, translator) for video, row, a in parsed]
     keep = _existing_lines(blind_path)
     blind_path.parent.mkdir(parents=True, exist_ok=True)
-    blind_path.write_text(render_blind(items, prompt_version, keep, language), encoding="utf-8")
+    blind_path.write_text(render_blind(items, prompt_version, keep, language, model), encoding="utf-8")
     model_path.write_text(render_model(parsed, prompt_version), encoding="utf-8")
     return len(parsed)
 
