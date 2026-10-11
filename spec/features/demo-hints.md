@@ -37,5 +37,12 @@ None.
 ## Done criteria
 `uv run pytest tests/test_features.py` (both languages, trimmed json3 fixture, missing file).
 
+## Working on this code
+- Pure functions, no LLM; the only I/O is reading the raw json3 file.
+- Hints are prompt input but not in the cache key: if old analyses should change, bump
+  `PROMPT_VERSION`.
+- Add regex patterns for both English and Russian, as whole words, with a test each.
+- Run: `uv run pytest tests/test_features.py`.
+
 ## Open questions
 - Title only; the description is not ingested.

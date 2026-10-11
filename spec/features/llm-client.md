@@ -45,5 +45,13 @@ None.
 `uv run pytest tests/test_llm.py` (fake client: fallback chain, dropped parameters, validation
 feedback, backoff, no key in errors).
 
+## Working on this code
+- No other module may create an OpenAI client or call the API; everything goes through `llm()`.
+- New provider-specific parameters go into `extra_body` and must be droppable when rejected
+  (`_Shape.degrade`).
+- Never log request kwargs or the client; the key lives only in `get_client()`.
+- Tests use `FakeClient` and real `openai` exception classes; `llm._sleep` is patched.
+- Run: `uv run pytest tests/test_llm.py`.
+
 ## Open questions
 - No `max_tokens` parameter (OpenRouter 402 on low balance).

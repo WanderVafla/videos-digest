@@ -37,5 +37,11 @@ Reads `videos`, `analyses`; writes `translations` when translating.
 ## Done criteria
 Export tests in `uv run pytest tests/test_review.py`.
 
+## Working on this code
+- The blind file must never contain model scores, verdicts or justifications (a test checks it).
+- Keep the line format parseable by `parse_blind`; a format change goes to data-contracts.md first.
+- Re-export must keep filled ratings; tests inject a translator instead of calling the API.
+- Run: `uv run pytest tests/test_review.py`.
+
 ## Open questions
 - Not filtered by model, unlike `calibrate --model` (status.md).

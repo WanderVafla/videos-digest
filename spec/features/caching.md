@@ -36,5 +36,12 @@ Keys and tables: data-contracts.md ("Cache keys", "SQLite").
 `tests/test_summarize.py` (cached run makes no call; new language/model/transcript makes one),
 `tests/test_translate.py` (cache hit).
 
+## Working on this code
+- Anything that changes analysis output must be in `cache_key` or come with a new
+  `PROMPT_VERSION`; otherwise stale results are served.
+- Do not add the topic list or `DIGEST_LANGUAGE` to the key (D6, D9).
+- A key change invalidates every stored analysis: say so in the PR and in status.md.
+- Run: `uv run pytest tests/test_summarize.py tests/test_translate.py`.
+
 ## Open questions
 - None.

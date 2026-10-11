@@ -40,5 +40,12 @@ None. Path fixed: `topics.txt` in the project root.
 ## Done criteria
 `uv run pytest tests/test_topics.py` and the topic tests in `tests/test_summarize.py`.
 
+## Working on this code
+- Code decides what is new; keep `resolve` and `check_new_topics` pure.
+- Write `topics.txt` only through `save_topics`/`append_topics` (atomic temp file + rename).
+- Tests must pass `topics_path` / a temp file; never write the real `topics.txt` in tests.
+- `merge` rewrites every analysis row, including old prompt versions.
+- Run: `uv run pytest tests/test_topics.py tests/test_summarize.py`.
+
 ## Open questions
 - `topics merge` likely fails on old `summarize_v1` rows (topics as strings).

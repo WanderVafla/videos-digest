@@ -46,6 +46,15 @@ Field list: data-contracts.md.
 `uv run pytest tests/test_summarize.py tests/test_schema.py` passes; `summarize --limit 1` on a
 real key writes one `analyses` row (paid, user only).
 
+## Working on this code
+- A prompt change means a new `prompts/summarize_vN.md` and a new `PROMPT_VERSION`; never edit
+  the current file in place (cached results would be served).
+- A schema change: data-contracts.md first; keep it strict-compatible (all fields required,
+  `extra="forbid"`; `test_json_schema_is_strict_compatible`).
+- Checks that need transcript data belong in the validation context, not only in the prompt.
+- Never run `summarize` yourself; tests use `FakeLLM` in `tests/test_summarize.py`.
+- Run: `uv run pytest tests/test_summarize.py tests/test_schema.py`.
+
 ## Open questions
 - Summary length is validated as 3-10 sentences, the prompt asks for 5-7.
 - No `max_tokens` (status.md).

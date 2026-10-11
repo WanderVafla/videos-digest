@@ -35,5 +35,11 @@ Used by `export-review` (summary and key points of the blind file).
 ## Done criteria
 `uv run pytest tests/test_translate.py`.
 
+## Working on this code
+- Display only: never write translated text into `analyses`.
+- A prompt change means `translate_v2.md` and a new `TRANSLATION_PROMPT_VERSION`.
+- Tests inject `llm_fn`; no real calls.
+- Run: `uv run pytest tests/test_translate.py`.
+
 ## Open questions
 - None.

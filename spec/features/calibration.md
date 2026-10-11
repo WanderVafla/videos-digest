@@ -38,5 +38,11 @@ Reads only; no LLM calls.
 ## Done criteria
 Calibration tests in `uv run pytest tests/test_review.py`.
 
+## Working on this code
+- Read-only and no LLM calls; keep it that way.
+- Score names in the blind file (`value`, `density`, `demo`) map to schema fields in
+  `review.SCORE_FIELDS`; change both sides together.
+- Run: `uv run pytest tests/test_review.py`.
+
 ## Open questions
 - What agreement / MAE is good enough (status.md).

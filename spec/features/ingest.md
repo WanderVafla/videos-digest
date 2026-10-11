@@ -43,5 +43,14 @@ Transcript and raw json3 files; nothing in SQLite.
 ## Done criteria
 `uv run pytest tests/test_ingest.py` passes (fixtures and a fake YoutubeDL; no network).
 
+## Working on this code
+- Never run `ingest` or call yt-dlp yourself; tests use `tests/fixtures/*.json3` and the
+  `FakeYdl` in `tests/test_ingest.py`.
+- Build every `YoutubeDL` through `make_ydl()`, options through `ydl_opts()` (D3).
+- `pick_track` must only return the video's own-language track; one `urlopen` per video (D1).
+- The `.md` format is a contract: update data-contracts.md first, then `render_markdown` and
+  `transcripts.py` together. Existing files are not rewritten (they are the cache).
+- Run: `uv run pytest tests/test_ingest.py`.
+
 ## Open questions
 - The video description is not saved (title keywords use the title only).

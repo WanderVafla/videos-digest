@@ -38,5 +38,11 @@ Setting -> prompt text, validation, cache key, DB column.
 ## Done criteria
 Language tests in `tests/test_schema.py` and `tests/test_summarize.py`.
 
+## Working on this code
+- Keep the script check lenient (D8); stricter checks reject valid text full of English terms.
+- `ANALYSIS_LANGUAGE` belongs in the cache key, `DIGEST_LANGUAGE` never does (D6).
+- Language names for the prompt live in `languages.LANGUAGE_NAMES`.
+- Run: `uv run pytest tests/test_schema.py tests/test_summarize.py`.
+
 ## Open questions
 - Readers take the newest analysis per video regardless of language.

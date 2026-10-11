@@ -27,11 +27,13 @@ uv run video-digest topics merge OLD NEW              merge topic OLD into NEW
 
 ## What to read when
 - Every session: spec/status.md, then spec/pipeline.md.
-- Changing a feature: spec/features/<feature>.md.
-- Changing a file format, table, JSON field or setting: spec/data-contracts.md.
+- Before changing ANY file: find it in the code map in spec/README.md and read the spec
+  files listed there, including "Working on this code".
+- A new file under src/, tests/ or spec/ gets a row in the code map in the same commit, no
+  question needed. A file anywhere else, or an existing tracked file missing from the map:
+  ask first.
 - Something looks odd or over-built: spec/decisions.md (Pitfalls at the end).
 - Prompts, rubric, glossary: src/video_digest/prompts/. Topics: topics.txt.
-  Settings: .env.example.
 
 ## Sync rule
 - Any change in behavior updates the matching spec file in the same commit.
