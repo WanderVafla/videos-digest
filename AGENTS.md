@@ -39,6 +39,7 @@ tests/                  pytest; fixtures/fakes only, never real network
   what is new (exact/normalized/near-duplicate match).
 - demo_value uses text hints only and is flagged by demo_confidence.
 - Tests never call real APIs: fake clients only.
+- Every feature (command, option, setting, file) is documented in README.md.
 - YouTube: never request translated auto-captions (HTTP 429); one own-language
   track per video. All yt-dlp calls go through `make_ydl()` in ingest.py.
 - Never commit `.env`, transcripts, the database or Qdrant data (data/qdrant/).
