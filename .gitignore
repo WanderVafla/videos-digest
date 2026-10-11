@@ -15,6 +15,7 @@ data/raw/
 data/review_model.md
 data/transcripts/
 
+topics.txt
 # downloaded media from manual yt-dlp tests
 *.webm
 *.mp4

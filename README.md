@@ -102,7 +102,7 @@ uv run video-digest prune --prompt-version summarize_v1 --yes  # delete them (ne
 
 ### Topics: `topics.txt`
 
-The topic list lives in `topics.txt` (tracked by git), one `slug: description` per line, slugs in
+The topic list lives in `topics.txt` (local, not in git), one `slug: description` per line, slugs in
 lowercase English kebab-case. It starts empty and grows while `summarize` runs:
 
 - The prompt lists existing topics, most used first (up to 150). The model should reuse them
@@ -145,7 +145,7 @@ disagreements. `--model M` picks the model to compare (default: `LLM_MODEL_FAST`
 | `data/db.sqlite` | Videos, analyses (the LLM cache), translations | no |
 | `data/review_blind.md` | Your blind ratings | yes |
 | `data/review_model.md` | Model scores for review | no |
-| `topics.txt` | Topic taxonomy | yes |
+| `topics.txt` | Topic taxonomy | no |
 | `src/video_digest/prompts/` | Prompts (`summarize_v2.md`, `translate_v1.md`) and glossary | yes |
 
 ## Development

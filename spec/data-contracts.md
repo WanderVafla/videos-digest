@@ -138,11 +138,12 @@ version. `prune --prompt-version V --yes` deletes all rows of V (never the curre
   `translate.translation_cache_key`.
 - Not in any key: `topics.txt`, `DIGEST_LANGUAGE`, demo hints, glossary.
 
-## topics.txt (tracked)
+## topics.txt (local, not in git)
 
 One `slug: description` per line, description in English. Slug: `^[a-z0-9]+(-[a-z0-9]+)*$`, 1-3
 words (enforced for new slugs). Lines that do not match are skipped; on duplicate slugs the first
 wins. Missing or empty file = empty taxonomy. Rewritten atomically (`topics.txt.tmp` + rename).
+Git-ignored: each checkout builds its own list during `summarize`, starting empty.
 
 ## data/review_blind.md (tracked once created)
 

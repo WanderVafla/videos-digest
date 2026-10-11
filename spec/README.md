@@ -21,7 +21,7 @@ directory row ending in `/`) or a row names a missing path.
 | `src/video_digest/schema.py` | [data-contracts.md](data-contracts.md) (Analysis JSON), [features/analysis.md](features/analysis.md) |
 | `src/video_digest/llm.py` | [features/llm-client.md](features/llm-client.md), decision D4 |
 | `src/video_digest/features.py` | [features/demo-hints.md](features/demo-hints.md), decision D10 |
-| `src/video_digest/topics.py`, `topics.txt` | [features/topics.md](features/topics.md), decision D9 |
+| `src/video_digest/topics.py` | [features/topics.md](features/topics.md), decision D9; also for the local, git-ignored `topics.txt` |
 | `src/video_digest/languages.py` | [features/languages.md](features/languages.md), decisions D6-D8 |
 | `src/video_digest/translate.py` | [features/translation.md](features/translation.md) |
 | `src/video_digest/review.py` | [features/review-export.md](features/review-export.md), [features/calibration.md](features/calibration.md) |

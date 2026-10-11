@@ -33,7 +33,7 @@ A shared, growing topic taxonomy so Russian and English videos get the same Engl
 None. Path fixed: `topics.txt` in the project root.
 
 ## Data
-`topics.txt` (tracked in git), `analyses.analysis_json.topics`.
+`topics.txt` (local, git-ignored; a fresh checkout starts empty), `analyses.analysis_json.topics`.
 
 ## Edge cases and errors
 - Missing/empty file = empty taxonomy; the first video seeds it without the 2-new limit.
