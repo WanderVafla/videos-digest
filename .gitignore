@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.py[oc]
+build/
+dist/
+*.egg-info
+
+data/db.sqlite
+data/qdrant/
+data/transcripts/*
+!data/transcripts/.gitkeep
+videos.txt

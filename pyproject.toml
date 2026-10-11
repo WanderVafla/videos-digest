@@ -1,0 +1,19 @@
+[project]
+name = "video-digest"
+version = "0.1.0"
+description = "Weekly digest of neural-network videos: LLM summaries, scores and topic clusters"
+readme = "README.md"
+authors = [
+    { name = "WanderVafla", email = "procenkovladik1@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "openai>=3.28.0",
+    "pydantic>=2.14.0",
+    "python-dotenv>=1.2.4",
+    "typer>=0.27.3",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.17,<0.13.0"]
+build-backend = "uv_build"
