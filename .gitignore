@@ -13,6 +13,7 @@ data/transcripts/*
 videos.txt
 data/raw/
 data/review_model.md
+data/transcripts/
 
 # downloaded media from manual yt-dlp tests
 *.webm
