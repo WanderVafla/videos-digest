@@ -9,14 +9,18 @@ topics, and generates a weekly digest with a verdict per video:
 ## Structure
 ```
 videos.txt              input: one video URL per line, # = comment
-data/transcripts/       raw transcripts (git-ignored)
+data/raw/               raw subtitle files, json3 (git-ignored)
+data/transcripts/       <video_id>.md: frontmatter + time chunks (git-ignored)
 data/db.sqlite          local state and LLM cache (git-ignored)
 data/qdrant/            Qdrant storage (git-ignored)
 digests/                generated weekly digests
 docker-compose.yml      Qdrant service (ports 6333/6334)
 src/video_digest/
   config.py             settings from .env (paths, Qdrant URL, LLM config)
+  cli.py                typer app, `uv run video-digest <command>`
+  ingest.py             stage 1: videos.txt -> transcripts (yt-dlp)
   llm.py                single llm() entry point (to be added)
+tests/                  pytest; fixtures/fakes only, never real network
 ```
 
 ## Rules
@@ -30,9 +34,11 @@ src/video_digest/
 - Cache LLM results keyed by a hash of the transcript (plus model/prompt);
   never re-call the LLM for an unchanged transcript.
 - Settings are read only via `config.py`; never crash on missing keys at import.
+- YouTube: never request translated auto-captions (HTTP 429); one own-language
+  track per video. All yt-dlp calls go through `make_ydl()` in ingest.py.
 - Never commit `.env`, transcripts, the database or Qdrant data.
 
 ## Stages
 Work strictly one stage at a time. Never build ahead of the current stage:
 no scripts, modules or dependencies for future stages until asked.
-Current stage: 0 (project skeleton).
+Current stage: 1 (transcript ingest).
