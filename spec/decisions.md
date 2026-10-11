@@ -101,6 +101,40 @@ Format: Decision / Why / Consequence. Newest last. Read before "simplifying" som
 - **Consequence:** the sync rule (AGENTS.md) still applies inside a code PR: behavior changes
   update the matching spec file in the same commit.
 
+## D15. Output token limit: LLM_MAX_OUTPUT_TOKENS = 14000
+- **Decision:** every `llm()` call sends `max_tokens` = `LLM_MAX_OUTPUT_TOKENS` (default 14000;
+  `0` = not sent). A rejected `max_tokens` is dropped like `temperature`. An answer with
+  `finish_reason == "length"` is never parsed: one retry with the limit doubled (cap 65,536),
+  then the video fails with `LLMTruncatedError`.
+- **Why:** without `max_tokens` OpenRouter reserves credit for the model's maximum output (65,536
+  for Claude Haiku 5.5) and answered HTTP 402 when the balance could not cover it. Default from
+  real data (2026-10-11): the largest `tokens_out` in the local DB was 4622 (a `summarize_v1`
+  row; 3857 for `summarize_v2`) over 16 analyses on `anthropic/claude-haiku-5.5` with
+  reasoning effort `low`; 3 x 4622 = 13,866, rounded up to the next 1000 = 14,000 (minimum 4000).
+  `tokens_out` is summed over validation retries, so a single call is usually smaller.
+- **Consequence:** reasoning tokens count as output, so the limit covers reasoning + answer: a
+  higher reasoning effort or a chattier model may need a higher limit (truncation errors say so).
+  A partial JSON is never repaired.
+
+## D16. Fatal HTTP errors stop the run
+- **Decision:** 401, 402 and 403 are not retried; `summarize` stops on the first one
+  (`summarize.RunStopped`), prints the video, the count done and a hint, and exits 2. 429 and
+  5xx keep the backoff; other per-video errors are logged and the run continues.
+- **Why:** a bad key, an empty balance or a model without access fails every remaining video the
+  same way; the old behavior printed the same error for each of them.
+- **Consequence:** results saved before the stop stay in the DB; the next run continues from the
+  cache.
+
+## D17. Queries on analyses are scoped to one prompt version
+- **Decision:** every reader of `analyses` filters by prompt version; topic usage, `topics` and
+  `topics merge` use the current `PROMPT_VERSION`. Stored topics are read only through
+  `topics.stored_topic`, which accepts v1 strings and v2+ objects and skips anything else.
+  `prune --prompt-version V` deletes old versions (dry run unless `--yes`; never the current one).
+- **Why:** old `summarize_v1` rows store topics as strings and other field names; mixing versions
+  skewed usage counts and could crash `topics merge`.
+- **Consequence:** a `PROMPT_VERSION` bump starts topic usage counts from zero; `topics merge`
+  does not rewrite older versions.
+
 ## Pitfalls
 
 - Requesting a translated caption track (e.g. `en` for a Russian video) -> HTTP 429 and an
@@ -108,9 +142,11 @@ Format: Decision / Why / Consequence. Newest last. Read before "simplifying" som
 - The first `-orig` key in `automatic_captions` can be a dub, not the original.
 - Editing `summarize_v2.md` in place serves old cached analyses. Create `summarize_v3.md`
   and bump `PROMPT_VERSION`.
-- No `max_tokens` is sent: OpenRouter reserves credit for the model's maximum output
-  (65,536 for Haiku) and answers 402 if the balance is lower.
-- An invalid API key gives 401 for every video; `summarize` does not stop early.
+- Setting `LLM_MAX_OUTPUT_TOKENS=0` brings back the OpenRouter 402 on a low balance (D15).
+- Reasoning tokens use up `max_tokens`: raising the reasoning effort without the limit gives
+  truncated answers (`LLMTruncatedError`).
+- Reading `analysis_json["topics"]` directly crashes on `summarize_v1` rows; use
+  `topics.stored_topics` (D17).
 - Typer renders `[...]` in help texts as markup and drops it; write `(default: ...)`.
 - `topics.txt` changes during a run; tests must pass `topics_path` to a temp file.
 - Near-duplicate matching can merge related but different slugs (`ai-design` -> `ai-designer`);

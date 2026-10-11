@@ -29,21 +29,32 @@ Field list: data-contracts.md.
 - Needs `LLM_API_KEY` and `LLM_MODEL_FAST`; checks `ANALYSIS_LANGUAGE`.
 - Progress per video: verdict, tokens, cost, topic notes; totals at the end.
 - `--limit` counts only videos that need a call. Exit 1 if any video failed.
+- HTTP 401/402/403 from the provider stop the run at once (`summarize.RunStopped`): it prints
+  the video it stopped on, how many were done (saved) and failed before it, a one-line hint (key,
+  balance or model access) and exits 2. Analyses saved before the stop stay in the DB.
+
+`video-digest prune --prompt-version V [--yes]`
+- Lists the `analyses` rows of version V: count, models with row counts, total known cost.
+- Deletes them only with `--yes`; the default is a dry run. Refuses the current `PROMPT_VERSION`
+  (exit 1). Never touches `videos`, `translations` or `topics.txt`.
 
 ## Settings (.env)
-`LLM_MODEL_FAST`, `LLM_REASONING_EFFORT_FAST`, `ANALYSIS_LANGUAGE`, plus llm-client settings.
+`LLM_MODEL_FAST`, `LLM_REASONING_EFFORT_FAST`, `LLM_MAX_OUTPUT_TOKENS`, `ANALYSIS_LANGUAGE`, plus
+llm-client settings.
 
 ## Data
 `videos`, `analyses` (data-contracts.md); `topics.txt`.
 
 ## Edge cases and errors
-- Any exception for one video (API, validation) -> `error` line, run continues.
+- Any exception for one video (API, validation, truncated answer) -> `error` line, run continues;
+  429/5xx are first retried inside `llm()`.
+- Fatal API errors (401/402/403, `llm.is_fatal`) -> the run stops (see CLI commands).
 - Timestamps not equal to a chunk start, wrong script, too many new topics -> validation error
   fed back to the model.
 - `PROMPT_VERSION = "summarize_v2"`; a prompt change needs a new file and version.
 
 ## Done criteria
-`uv run pytest tests/test_summarize.py tests/test_schema.py` passes; `summarize --limit 1` on a
+`uv run pytest tests/test_summarize.py tests/test_schema.py tests/test_cli.py` passes; `summarize --limit 1` on a
 real key writes one `analyses` row (paid, user only).
 
 ## Working on this code
@@ -52,9 +63,11 @@ real key writes one `analyses` row (paid, user only).
 - A schema change: data-contracts.md first; keep it strict-compatible (all fields required,
   `extra="forbid"`; `test_json_schema_is_strict_compatible`).
 - Checks that need transcript data belong in the validation context, not only in the prompt.
-- Never run `summarize` yourself; tests use `FakeLLM` in `tests/test_summarize.py`.
-- Run: `uv run pytest tests/test_summarize.py tests/test_schema.py`.
+- Never run `summarize` or `prune` yourself; tests use `FakeLLM` in `tests/test_summarize.py` and
+  a temp DB in `tests/test_cli.py`.
+- Every query on `analyses` filters by prompt version (decision D17); old rows may have another
+  shape.
+- Run: `uv run pytest tests/test_summarize.py tests/test_schema.py tests/test_cli.py`.
 
 ## Open questions
 - Summary length is validated as 3-10 sentences, the prompt asks for 5-7.
-- No `max_tokens` (status.md).

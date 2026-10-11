@@ -10,6 +10,8 @@ Before changing a file, read the spec files listed for it. Feature files end wit
 
 A new file under src/, tests/ or spec/ gets a row in the code map in the same commit, no
 question needed. A file anywhere else, or an existing tracked file missing from the map: ask first.
+`tests/test_spec_map.py` fails when a file from `git ls-files` has no row (exact path, or a
+directory row ending in `/`) or a row names a missing path.
 
 | Code | Read first |
 |---|---|
@@ -26,10 +28,15 @@ question needed. A file anywhere else, or an existing tracked file missing from 
 | `src/video_digest/db.py` | [data-contracts.md](data-contracts.md) (SQLite, Cache keys), [features/caching.md](features/caching.md) |
 | `src/video_digest/config.py`, `.env.example` | [data-contracts.md](data-contracts.md) (Settings) |
 | `src/video_digest/cli.py`, `src/video_digest/__init__.py` | the feature file of the command + root `README.md` (user docs) |
-| `src/video_digest/prompts/summarize_v2.md`, `prompts/__init__.py` | [features/analysis.md](features/analysis.md), decision D5 (new version, never edit in place) |
+| `src/video_digest/prompts/summarize_v2.md`, `src/video_digest/prompts/__init__.py` | [features/analysis.md](features/analysis.md), decision D5 (new version, never edit in place) |
 | `src/video_digest/prompts/translate_v1.md` | [features/translation.md](features/translation.md) |
 | `src/video_digest/prompts/glossary.txt` | [features/languages.md](features/languages.md) |
 | `tests/` | the feature file of the module under test (Done criteria) |
+| `tests/test_cli.py` | the feature file of the command (analysis.md, review-export.md) |
+| `tests/test_spec_map.py` | this file (code map), `AGENTS.md` (links) |
+| `spec/` | this file ("When to update what"); every link must resolve (`tests/test_spec_map.py`) |
+| `AGENTS.md` | this file; keep its commands in sync with `src/video_digest/cli.py` |
+| `README.md` | the feature file of the documented command (user docs) |
 | `pyproject.toml`, `uv.lock`, `.python-version` | `AGENTS.md` (code rules); new dependencies only for the current stage |
 | `docker-compose.yml` | [features/embeddings-search.md](features/embeddings-search.md) (stage 3, planned) |
 | `digests/` | [features/digest.md](features/digest.md) (stage 5, planned) |

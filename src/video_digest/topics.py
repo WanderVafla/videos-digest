@@ -13,6 +13,7 @@ import sqlite3
 from collections import Counter
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -161,27 +162,52 @@ def merge_slugs(slugs: list[str], old: str, new: str) -> list[str]:
 # --- stored analyses ---------------------------------------------------------------
 
 
-def stored_usage(conn: sqlite3.Connection) -> Counter[str]:
-    """Usage per slug over the newest analysis of each video."""
-    lists = [json.loads(j).get("topics", []) for j in db.latest_analysis_json_per_video(conn)]
-    return usage_counts([t["slug"] for t in ts if isinstance(t, dict) and "slug" in t] for ts in lists)
+def stored_topic(item: Any) -> tuple[str, str] | None:
+    """(slug, description) of one stored topic: a {slug, description} object (v2+) or a plain
+    string (summarize_v1). Anything else -> None, so legacy or broken rows never crash a reader."""
+    if isinstance(item, str):
+        return (item, "") if item else None
+    if isinstance(item, dict):
+        slug: Any = item.get("slug")
+        desc: Any = item.get("description")
+        if isinstance(slug, str) and slug:
+            return slug, desc if isinstance(desc, str) else ""
+    return None
 
 
-def merge(conn: sqlite3.Connection, path: Path, old: str, new: str) -> int:
-    """Rewrite OLD to NEW in all stored analyses and in topics.txt; returns analyses changed."""
+def stored_topics(analysis_json: str) -> list[tuple[str, str]]:
+    """All readable topics of a stored analysis_json, in order; invalid JSON or shapes -> []."""
+    try:
+        data = json.loads(analysis_json)
+    except json.JSONDecodeError:
+        return []
+    items: Any = data.get("topics") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        return []
+    return [t for t in map(stored_topic, items) if t is not None]
+
+
+def stored_usage(conn: sqlite3.Connection, prompt_version: str) -> Counter[str]:
+    """Usage per slug over the newest analysis of each video for one prompt version."""
+    rows = db.latest_analysis_json_per_video(conn, prompt_version)
+    return usage_counts([slug for slug, _ in stored_topics(j)] for j in rows)
+
+
+def merge(conn: sqlite3.Connection, path: Path, old: str, new: str, prompt_version: str) -> int:
+    """Rewrite OLD to NEW in the analyses of one prompt version and in topics.txt; returns analyses changed."""
     if not SLUG_RE.match(new) or len(new.split("-")) > MAX_WORDS:
         raise ValueError(f"invalid slug: {new!r}")
     known = load_topics(path)
     new_desc = known.get(new) or known.get(old, "")
     changed = 0
     with conn:
-        for row_id, analysis_json in db.analysis_json_rows(conn):
-            data = json.loads(analysis_json)
-            refs = data.get("topics", [])
-            slugs = [t["slug"] for t in refs]
+        for row_id, analysis_json in db.analysis_json_rows(conn, prompt_version):
+            refs = stored_topics(analysis_json)
+            slugs = [slug for slug, _ in refs]
             if old not in slugs:
                 continue
-            descs = {t["slug"]: t.get("description", "") for t in refs}
+            data = json.loads(analysis_json)
+            descs = dict(refs)
             descs[new] = new_desc
             data["topics"] = [{"slug": s, "description": descs.get(s, "")} for s in merge_slugs(slugs, old, new)]
             db.update_analysis_json(conn, row_id, json.dumps(data, ensure_ascii=False))

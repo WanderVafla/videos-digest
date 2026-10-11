@@ -23,6 +23,7 @@ Measure how far the model's scores and verdicts are from the user's blind rating
 ## CLI commands
 `video-digest calibrate [--model MODEL]` (default `LLM_MODEL_FAST`; empty = any model). The
 first line names the compared model and prompt version. Exit 1 if the blind file is missing.
+`export-review --model` uses the same default, so both look at the same model's analyses.
 
 ## Settings (.env)
 `LLM_MODEL_FAST` (default model).

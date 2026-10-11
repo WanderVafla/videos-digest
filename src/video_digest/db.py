@@ -149,19 +149,47 @@ def latest_analyses(
     return result
 
 
-def analysis_json_rows(conn: sqlite3.Connection) -> list[tuple[int, str]]:
-    """(row id, analysis_json) of every stored analysis, for topic merges."""
-    return [(r["id"], r["analysis_json"]) for r in conn.execute("SELECT id, analysis_json FROM analyses")]
+def analysis_json_rows(conn: sqlite3.Connection, prompt_version: str) -> list[tuple[int, str]]:
+    """(row id, analysis_json) of every analysis of one prompt version, for topic merges."""
+    rows = conn.execute("SELECT id, analysis_json FROM analyses WHERE prompt_version = ?", (prompt_version,))
+    return [(r["id"], r["analysis_json"]) for r in rows]
 
 
-def latest_analysis_json_per_video(conn: sqlite3.Connection) -> list[str]:
-    """analysis_json of the newest analysis of each video (any prompt version or model)."""
+def latest_analysis_json_per_video(conn: sqlite3.Connection, prompt_version: str) -> list[str]:
+    """analysis_json of the newest analysis of each video for one prompt version (any model)."""
     rows = conn.execute(
         """SELECT a.analysis_json FROM analyses a WHERE a.id = (
-            SELECT a2.id FROM analyses a2 WHERE a2.video_id = a.video_id
-            ORDER BY a2.created_at DESC, a2.id DESC LIMIT 1)"""
+            SELECT a2.id FROM analyses a2 WHERE a2.video_id = a.video_id AND a2.prompt_version = :pv
+            ORDER BY a2.created_at DESC, a2.id DESC LIMIT 1)""",
+        {"pv": prompt_version},
     )
     return [r["analysis_json"] for r in rows]
+
+
+class VersionSummary(BaseModel):
+    prompt_version: str
+    count: int
+    models: dict[str, int]  # model -> rows
+    cost_usd: float  # sum of known costs
+
+
+def version_summary(conn: sqlite3.Connection, prompt_version: str) -> VersionSummary:
+    rows = conn.execute(
+        "SELECT model, COUNT(*) AS n, COALESCE(SUM(cost_usd), 0) AS cost FROM analyses "
+        "WHERE prompt_version = ? GROUP BY model ORDER BY model",
+        (prompt_version,),
+    ).fetchall()
+    return VersionSummary(
+        prompt_version=prompt_version,
+        count=sum(r["n"] for r in rows),
+        models={r["model"]: r["n"] for r in rows},
+        cost_usd=sum(r["cost"] for r in rows),
+    )
+
+
+def delete_analyses(conn: sqlite3.Connection, prompt_version: str) -> int:
+    with conn:
+        return conn.execute("DELETE FROM analyses WHERE prompt_version = ?", (prompt_version,)).rowcount
 
 
 def update_analysis_json(conn: sqlite3.Connection, row_id: int, analysis_json: str) -> None:

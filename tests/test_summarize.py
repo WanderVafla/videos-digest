@@ -7,12 +7,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import httpx2
+import openai
 import pytest
 from conftest import RUSSIAN_SUMMARY
 
 from video_digest import db, summarize, topics
 from video_digest.ingest import Chunk, Track, VideoMeta, render_markdown
 from video_digest.llm import LLMResult, Message
+from video_digest.summarize import RunStopped
 from video_digest.schema import (
     ALLOWED_TIMESTAMPS,
     ANALYSIS_LANGUAGE,
@@ -347,8 +350,15 @@ def test_topic_usage_in_prompt(conn: sqlite3.Connection, topics_file: Path, anal
     db.upsert_video(conn, db.VideoRow(id="v", title="t", channel=None, url="u", upload_date=None,
                                       duration_seconds=None, source_language="en", transcript_path="p"))  # fmt: skip
     stored = dict(analysis_data, topics=[{"slug": "rag", "description": ""}, {"slug": "mcp", "description": ""}])
-    db.save_analysis(conn, db.AnalysisRow(video_id="v", prompt_version="x", model="m", cache_key="k",
+    db.save_analysis(conn, db.AnalysisRow(video_id="v", prompt_version=PROMPT_VERSION, model="m", cache_key="k",
                                           analysis_json=json.dumps(stored), hints_json="{}"))  # fmt: skip
+    # a newer row of another prompt version (here a legacy v1 row, topics as strings) is ignored
+    db.upsert_video(conn, db.VideoRow(id="w", title="t", channel=None, url="u", upload_date=None,
+                                      duration_seconds=None, source_language="en", transcript_path="p"))  # fmt: skip
+    for vid in ("v", "w"):
+        db.save_analysis(conn, db.AnalysisRow(video_id=vid, prompt_version="summarize_v1", model="m", cache_key=f"old-{vid}",
+                                              analysis_json=json.dumps({"topics": ["memory", "memory-tools"]}),
+                                              hints_json="{}", created_at="2999-01-01T00:00:00+00:00"))  # fmt: skip
     state = TopicState.load(topics_file, conn)
     assert topics.prompt_block(state.known, state.usage).splitlines() == [
         "- mcp (1): Model Context Protocol",
@@ -378,3 +388,52 @@ def test_long_transcript_is_split_and_merged(
     assert final_context is not None and final_context[ALLOWED_TIMESTAMPS] == {0, 120, 240, 360}
     assert result.tokens_in == 1000 * len(fake.calls)
     assert result.cost_usd == pytest.approx(0.01 * len(fake.calls))
+
+
+@pytest.mark.parametrize("status", [401, 402, 403])
+def test_fatal_api_error_stops_the_run(
+    tmp_path: Path, conn: sqlite3.Connection, topics_file: Path, analysis_data: dict[str, Any], status: int
+) -> None:
+    for vid in ("aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc", "ddddddddddd"):
+        write_transcript(tmp_path, vid, title=f"Video {vid}")
+    request = httpx2.Request("POST", "https://llm.test/v1/chat/completions")
+    error = openai.APIStatusError("denied", response=httpx2.Response(status, request=request), body=None)
+
+    class FailingLLM(FakeLLM):
+        def __call__(self, messages: list[Message], *args: Any, **kwargs: Any) -> LLMResult[VideoAnalysis]:
+            if "Video bbbbbbbbbbb" in messages[1]["content"]:
+                raise RuntimeError("one bad video")  # ordinary errors: logged, run continues
+            if "Video ccccccccccc" in messages[1]["content"]:
+                self.calls.append((messages, None))
+                raise error
+            return super().__call__(messages, *args, **kwargs)
+
+    fake = FailingLLM(analysis_data)
+    seen: list[str] = []
+    with pytest.raises(RunStopped) as info:
+        run(conn, load_transcripts(tmp_path), topics_file, fake, on_result=lambda o: seen.append(o.status))
+    stop = info.value
+    assert (stop.video_id, stop.status) == ("ccccccccccc", status)
+    assert [(o.video_id, o.status) for o in stop.outcomes] == [("aaaaaaaaaaa", "ok"), ("bbbbbbbbbbb", "error")]
+    assert seen == ["ok", "error"]
+    # the result saved before the stop stays; the video after it was never tried
+    assert [r[0] for r in conn.execute("SELECT video_id FROM analyses")] == ["aaaaaaaaaaa"]
+    assert not any("Video ddddddddddd" in m[1]["content"] for m, _ in fake.calls)
+
+
+def test_transient_error_after_retries_does_not_stop_the_run(
+    tmp_path: Path, conn: sqlite3.Connection, topics_file: Path, analysis_data: dict[str, Any]
+) -> None:
+    for vid in ("aaaaaaaaaaa", "bbbbbbbbbbb"):
+        write_transcript(tmp_path, vid, title=f"Video {vid}")
+    request = httpx2.Request("POST", "https://llm.test/v1/chat/completions")
+    error = openai.RateLimitError("slow", response=httpx2.Response(429, request=request), body=None)
+
+    class Flaky(FakeLLM):
+        def __call__(self, messages: list[Message], *args: Any, **kwargs: Any) -> LLMResult[VideoAnalysis]:
+            if "Video aaaaaaaaaaa" in messages[1]["content"]:
+                raise error
+            return super().__call__(messages, *args, **kwargs)
+
+    outcomes = run(conn, load_transcripts(tmp_path), topics_file, Flaky(analysis_data))
+    assert [o.status for o in outcomes] == ["error", "ok"]

@@ -16,6 +16,12 @@ from video_digest.ingest import (
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 
+FATAL_HINTS = {
+    401: "check LLM_API_KEY in .env (invalid or revoked key)",
+    402: "check the provider balance (OpenRouter credits) or lower LLM_MAX_OUTPUT_TOKENS",
+    403: f"check that the key has access to the model ({config.LLM_MODEL_FAST or 'LLM_MODEL_FAST'})",
+}
+
 
 @app.callback()
 def main() -> None:
@@ -57,7 +63,7 @@ def summarize(
 ) -> None:
     """Summarize and score transcripts with LLM_MODEL_FAST (cached by transcript hash)."""
     from video_digest.languages import SOURCE, is_valid_code
-    from video_digest.summarize import PROMPT_VERSION, Outcome, summarize_all
+    from video_digest.summarize import PROMPT_VERSION, Outcome, RunStopped, summarize_all
     from video_digest.transcripts import Transcript, load_transcripts
 
     model = config.LLM_MODEL_FAST
@@ -86,10 +92,21 @@ def summarize(
         topics_note = f"  [{o.detail}]" if o.detail else ""
         typer.echo(f"{o.verdict}  in={o.tokens_in} out={o.tokens_out}{cost}{topics_note}")
 
-    with closing(db.connect()) as conn:
-        outcomes = summarize_all(
-            conn, transcripts, model, force=force, limit=limit, only_id=video_id, on_start=start, on_result=show
+    try:
+        with closing(db.connect()) as conn:
+            outcomes = summarize_all(
+                conn, transcripts, model, force=force, limit=limit, only_id=video_id, on_start=start, on_result=show
+            )
+    except RunStopped as stop:
+        done = [o for o in stop.outcomes if o.status == "ok"]
+        typer.echo("STOPPED")
+        typer.echo(
+            f"stopped on {stop.video_id}: HTTP {stop.status} from the provider; "
+            f"{len(done)} done and saved, {len(stop.outcomes) - len(done)} failed before it.",
+            err=True,
         )
+        typer.echo(f"hint: {FATAL_HINTS.get(stop.status or 0, 'check the API key, balance and model access')}", err=True)
+        raise typer.Exit(2) from stop
     if not outcomes:
         typer.echo("Nothing to do: all transcripts already have an analysis (use --force to redo).")
         return
@@ -105,7 +122,9 @@ def summarize(
 
 
 @app.command("export-review")
-def export_review() -> None:
+def export_review(
+    model: str | None = typer.Option(None, help="Export analyses of this model (default: LLM_MODEL_FAST)."),
+) -> None:
     """Write data/review_blind.md (to fill in, in DIGEST_LANGUAGE) and data/review_model.md (model scores)."""
     from video_digest.languages import is_valid_code
     from video_digest.summarize import PROMPT_VERSION
@@ -113,9 +132,11 @@ def export_review() -> None:
     if not is_valid_code(config.DIGEST_LANGUAGE):
         typer.echo(f"DIGEST_LANGUAGE must be an ISO 639-1 code, got {config.DIGEST_LANGUAGE!r}", err=True)
         raise typer.Exit(1)
+    model = model or config.LLM_MODEL_FAST or None
+    typer.echo(f"Exporting: model={model or 'any'} prompt_version={PROMPT_VERSION}")
     try:
         with closing(db.connect()) as conn:
-            count = review.export_review(conn, PROMPT_VERSION)
+            count = review.export_review(conn, PROMPT_VERSION, model=model)
     except Exception as exc:  # translation calls can fail; finished translations stay cached
         typer.echo(f"export-review failed: {type(exc).__name__}: {exc}", err=True)
         raise typer.Exit(1) from exc
@@ -139,20 +160,46 @@ def calibrate(
     typer.echo(review.format_report(review.calibrate(ratings, analyses, PROMPT_VERSION, model)))
 
 
+@app.command()
+def prune(
+    prompt_version: str = typer.Option(..., "--prompt-version", help="Prompt version whose analyses to delete."),
+    yes: bool = typer.Option(False, "--yes", help="Really delete (default: dry run, only list)."),
+) -> None:
+    """Delete all analyses of an old prompt version (dry run unless --yes)."""
+    from video_digest.summarize import PROMPT_VERSION
+
+    if prompt_version == PROMPT_VERSION:
+        typer.echo(f"Refusing to prune the current prompt version {PROMPT_VERSION}.", err=True)
+        raise typer.Exit(1)
+    with closing(db.connect()) as conn:
+        summary = db.version_summary(conn, prompt_version)
+        if not summary.count:
+            typer.echo(f"No analyses with prompt_version={prompt_version}.")
+            return
+        models = ", ".join(f"{m} ({n})" for m, n in summary.models.items())
+        typer.echo(f"{summary.count} analyses of {prompt_version}; models: {models}; total cost ${summary.cost_usd:.4f}")
+        if not yes:
+            typer.echo("Dry run: nothing deleted. Re-run with --yes to delete them.")
+            return
+        deleted = db.delete_analyses(conn, prompt_version)
+    typer.echo(f"Deleted {deleted} analyses of {prompt_version}.")
+
+
 topics_app = typer.Typer(help="Topic taxonomy in topics.txt.")
 app.add_typer(topics_app, name="topics")
 
 
 @topics_app.callback(invoke_without_command=True)
 def topics_list(ctx: typer.Context) -> None:
-    """List topic slugs with usage counts (newest analysis per video)."""
+    """List topic slugs with usage counts (newest analysis per video, current prompt version)."""
     if ctx.invoked_subcommand is not None:
         return
     from video_digest import topics
+    from video_digest.summarize import PROMPT_VERSION
 
     known = topics.load_topics(config.TOPICS_FILE)
     with closing(db.connect()) as conn:
-        usage = topics.stored_usage(conn)
+        usage = topics.stored_usage(conn, PROMPT_VERSION)
     if not known and not usage:
         typer.echo(f"No topics yet ({config.TOPICS_FILE}).")
         return
@@ -163,16 +210,17 @@ def topics_list(ctx: typer.Context) -> None:
 
 @topics_app.command("merge")
 def topics_merge(old: str, new: str) -> None:
-    """Rewrite OLD to NEW in stored analyses and topics.txt, and remove OLD."""
+    """Rewrite OLD to NEW in stored analyses (current prompt version) and topics.txt, and remove OLD."""
     from video_digest import topics
+    from video_digest.summarize import PROMPT_VERSION
 
     if old == new:
         typer.echo("OLD and NEW are the same.", err=True)
         raise typer.Exit(1)
     try:
         with closing(db.connect()) as conn:
-            changed = topics.merge(conn, config.TOPICS_FILE, old, new)
+            changed = topics.merge(conn, config.TOPICS_FILE, old, new, PROMPT_VERSION)
     except ValueError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
-    typer.echo(f"Merged {old} -> {new}: {changed} analyses updated, topics.txt rewritten.")
+    typer.echo(f"Merged {old} -> {new}: {changed} {PROMPT_VERSION} analyses updated, topics.txt rewritten.")
