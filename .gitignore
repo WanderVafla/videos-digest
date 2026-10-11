@@ -11,3 +11,9 @@ data/qdrant/
 data/transcripts/*
 !data/transcripts/.gitkeep
 videos.txt
+data/raw/
+
+# downloaded media from manual yt-dlp tests
+*.webm
+*.mp4
+*.m4a

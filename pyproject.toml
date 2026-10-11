@@ -12,8 +12,17 @@ dependencies = [
     "pydantic>=2.14.0",
     "python-dotenv>=1.2.4",
     "typer>=0.27.3",
+    "yt-dlp[curl-cffi,default]>=2026.8.19",
 ]
+
+[project.scripts]
+video-digest = "video_digest.cli:app"
 
 [build-system]
 requires = ["uv_build>=0.12.17,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

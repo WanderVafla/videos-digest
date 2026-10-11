@@ -12,4 +12,11 @@ cp .env.example .env           # then fill in LLM_API_KEY and model names
 docker compose up -d qdrant    # vector DB (needed from later stages)
 ```
 
-Add video URLs to `videos.txt` (one per line, `#` = comment); project rules: `AGENTS.md`.
+Add video URLs to `videos.txt` (one per line, `#` = comment), then:
+
+```bash
+uv run video-digest ingest    # -> data/transcripts/<id>.md, existing files skipped
+uv run pytest                 # offline tests
+```
+
+Project rules: `AGENTS.md`.
