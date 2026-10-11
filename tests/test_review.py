@@ -18,7 +18,7 @@ from video_digest.review import (
 )
 from video_digest.schema import VideoAnalysis
 
-PV = "summarize_v1"
+PV = "summarize_v2"
 
 
 def analysis(data: dict[str, Any], verdict: str, value: int, density: int, demo: int) -> VideoAnalysis:
@@ -30,7 +30,9 @@ def analysis(data: dict[str, Any], verdict: str, value: int, density: int, demo:
     return VideoAnalysis.model_validate(d)
 
 
-def store(conn: sqlite3.Connection, vid: str, a: VideoAnalysis, model: str = "m", prompt_version: str = PV) -> None:
+def store(
+    conn: sqlite3.Connection, vid: str, a: VideoAnalysis, model: str = "m", prompt_version: str = PV, language: str = "en"
+) -> None:
     db.upsert_video(
         conn,
         db.VideoRow(
@@ -42,9 +44,13 @@ def store(conn: sqlite3.Connection, vid: str, a: VideoAnalysis, model: str = "m"
         conn,
         db.AnalysisRow(
             video_id=vid, prompt_version=prompt_version, model=model, cache_key=f"{vid}-{model}-{prompt_version}",
-            analysis_json=a.model_dump_json(), hints_json="{}",
+            analysis_json=a.model_dump_json(), hints_json="{}", analysis_language=language,
         ),
     )
+
+
+def no_translation(text: str, target: str, source: str) -> str:
+    raise AssertionError(f"unexpected translation {source}->{target}")
 
 
 @pytest.fixture
@@ -58,12 +64,13 @@ def test_export_writes_blind_and_model_files(tmp_path: Path, conn: sqlite3.Conne
     store(conn, "ccccccccccc", analysis(analysis_data, "skip", 1, 2, 0), prompt_version="old_v0")
     blind, model = tmp_path / "review_blind.md", tmp_path / "review_model.md"
 
-    assert export_review(conn, PV, blind, model) == 2
+    assert export_review(conn, PV, blind, model, display_language="en", translator=no_translation) == 2
     blind_text = blind.read_text(encoding="utf-8")
     assert blind_text.count("my_verdict: ?") == 2
     assert blind_text.count("my_scores: value=? density=? demo=?") == 2
     assert "video_id: aaaaaaaaaaa" in blind_text and f"prompt_version: {PV}" in blind_text
-    assert analysis_data["summary_ru"] in blind_text
+    assert analysis_data["summary"] in blind_text
+    assert "- 0:00 The agent forgets context between sessions." in blind_text  # key points too
     assert "https://youtu.be/aaaaaaaaaaa" in blind_text
     # blind: no model scores or verdicts
     for leak in ["watch_full (", "verdict: watch_full", "value=8", "demo_confidence", "Concrete install steps"]:
@@ -78,7 +85,7 @@ def test_export_writes_blind_and_model_files(tmp_path: Path, conn: sqlite3.Conne
 def test_re_export_keeps_filled_ratings(tmp_path: Path, conn: sqlite3.Connection, analysis_data: dict[str, Any]) -> None:
     store(conn, "aaaaaaaaaaa", analysis(analysis_data, "watch_full", 8, 7, 9))
     blind, model = tmp_path / "review_blind.md", tmp_path / "review_model.md"
-    export_review(conn, PV, blind, model)
+    export_review(conn, PV, blind, model, display_language="en", translator=no_translation)
     blind.write_text(
         blind.read_text(encoding="utf-8")
         .replace("my_verdict: ?", "my_verdict: skip")
@@ -86,18 +93,18 @@ def test_re_export_keeps_filled_ratings(tmp_path: Path, conn: sqlite3.Connection
         encoding="utf-8",
     )
     store(conn, "bbbbbbbbbbb", analysis(analysis_data, "skip", 1, 2, 0))
-    export_review(conn, PV, blind, model)
+    export_review(conn, PV, blind, model, display_language="en", translator=no_translation)
     text = blind.read_text(encoding="utf-8")
     assert "my_verdict: skip" in text and "my_scores: value=3 density=? demo=1" in text
     assert text.count("my_verdict: ?") == 1  # the new video
 
 
-BLIND = """# Blind review (summarize_v1)
+BLIND = """# Blind review (summarize_v2)
 
 ## First video
 
 video_id: aaaaaaaaaaa
-prompt_version: summarize_v1
+prompt_version: summarize_v2
 url: https://youtu.be/aaaaaaaaaaa
 
 Резюме. Тут есть my_verdict: watch_full внутри текста, но не в начале строки.
@@ -108,7 +115,7 @@ my_scores: value=6 density=? demo=2
 ## Second video (unfilled)
 
 video_id: bbbbbbbbbbb
-prompt_version: summarize_v1
+prompt_version: summarize_v2
 
 my_verdict: ?
 my_scores: value=? density=? demo=?
@@ -116,7 +123,7 @@ my_scores: value=? density=? demo=?
 ## Third video
 
 video_id: ccccccccccc
-prompt_version: summarize_v1
+prompt_version: summarize_v2
 
 my_verdict: watch_full
 my_scores: value=? density=? demo=?
@@ -124,7 +131,7 @@ my_scores: value=? density=? demo=?
 ## Bad verdict
 
 video_id: ddddddddddd
-prompt_version: summarize_v1
+prompt_version: summarize_v2
 
 my_verdict: maybe
 my_scores: value=11 density=5 demo=5
@@ -189,7 +196,7 @@ def test_calibrate_report(analysis_data: dict[str, Any]) -> None:
 def test_calibrate_end_to_end_from_db(tmp_path: Path, conn: sqlite3.Connection, analysis_data: dict[str, Any]) -> None:
     store(conn, "aaaaaaaaaaa", analysis(analysis_data, "watch_full", 8, 7, 9))
     blind, model = tmp_path / "review_blind.md", tmp_path / "review_model.md"
-    export_review(conn, PV, blind, model)
+    export_review(conn, PV, blind, model, display_language="en", translator=no_translation)
     report = calibrate(parse_blind(blind.read_text(encoding="utf-8")), load_analyses_for_calibration(conn, PV), PV)
     assert report.matched == 0
     assert "Nothing to compare yet" in format_report(report)
@@ -204,3 +211,51 @@ def test_latest_analysis_per_video(conn: sqlite3.Connection, analysis_data: dict
     store(conn, "aaaaaaaaaaa", analysis(analysis_data, "watch_full", 9, 9, 9), model="m2")
     rows = db.latest_analyses(conn, PV)
     assert len(rows) == 1 and rows[0][1].model == "m2"
+
+
+def test_export_translates_blind_file_only(tmp_path: Path, conn: sqlite3.Connection, analysis_data: dict[str, Any]) -> None:
+    store(conn, "aaaaaaaaaaa", analysis(analysis_data, "watch_full", 8, 7, 9), language="en")
+    calls: list[tuple[str, str, str]] = []
+
+    def fake_translate(text: str, target: str, source: str) -> str:
+        calls.append((text, target, source))
+        prefix = f"[{target}] "
+        return "\n".join(f"- {prefix}{line[2:]}" if line.startswith("- ") else prefix + line for line in text.splitlines())
+
+    blind, model = tmp_path / "review_blind.md", tmp_path / "review_model.md"
+    export_review(conn, PV, blind, model, display_language="ru", translator=fake_translate)
+    assert [(target, source) for _, target, source in calls] == [("ru", "en"), ("ru", "en")]  # summary + key points
+    blind_text = blind.read_text(encoding="utf-8")
+    assert f"[ru] {analysis_data['summary']}" in blind_text
+    assert "- [ru] 0:00 The agent forgets context between sessions." in blind_text
+    assert "shown in ru" in blind_text
+    model_text = model.read_text(encoding="utf-8")
+    assert "[ru]" not in model_text and "analysis_language: en" in model_text  # model file stays untranslated
+
+
+def test_export_skips_translation_when_languages_match(
+    tmp_path: Path, conn: sqlite3.Connection, analysis_data: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from video_digest import translate
+
+    def no_llm(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("no LLM call expected")
+
+    monkeypatch.setattr(translate, "_default_llm", no_llm)
+    store(conn, "aaaaaaaaaaa", analysis(analysis_data, "skip", 1, 1, 1), language="ru")
+    blind, model = tmp_path / "review_blind.md", tmp_path / "review_model.md"
+    export_review(conn, PV, blind, model, display_language="ru")  # real translate(): same language, no call
+    assert analysis_data["summary"] in blind.read_text(encoding="utf-8")
+
+
+def test_calibrate_filters_by_model(tmp_path: Path, conn: sqlite3.Connection, analysis_data: dict[str, Any]) -> None:
+    store(conn, "aaaaaaaaaaa", analysis(analysis_data, "watch_full", 9, 9, 9), model="fast")
+    store(conn, "aaaaaaaaaaa", analysis(analysis_data, "skip", 1, 1, 1), model="smart")
+    ratings = [HumanRating(video_id="aaaaaaaaaaa", prompt_version=PV, verdict="watch_full", scores={})]
+
+    fast = calibrate(ratings, load_analyses_for_calibration(conn, PV, "fast"), PV, "fast")
+    smart = calibrate(ratings, load_analyses_for_calibration(conn, PV, "smart"), PV, "smart")
+    none = calibrate(ratings, load_analyses_for_calibration(conn, PV, "other"), PV, "other")
+    assert (fast.verdict_agreement, smart.verdict_agreement, none.matched) == (100.0, 0.0, 0)
+    assert format_report(fast).splitlines()[0] == f"Compared: model=fast prompt_version={PV}"
+    assert format_report(calibrate(ratings, {}, PV)).splitlines()[0] == f"Compared: model=any prompt_version={PV}"

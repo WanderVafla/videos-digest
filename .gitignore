@@ -12,6 +12,7 @@ data/transcripts/*
 !data/transcripts/.gitkeep
 videos.txt
 data/raw/
+data/review_model.md
 
 # downloaded media from manual yt-dlp tests
 *.webm

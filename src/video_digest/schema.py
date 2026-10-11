@@ -1,22 +1,41 @@
-"""Pydantic schemas for LLM outputs. VideoAnalysis doubles as the structured-output JSON Schema."""
+"""Pydantic schemas for LLM outputs. VideoAnalysis doubles as the structured-output JSON Schema.
+
+Context-dependent checks run only when model_validate gets a validation context:
+- ALLOWED_TIMESTAMPS: set of seconds (chunk heading starts) every timestamp must be in;
+- ANALYSIS_LANGUAGE: ISO 639-1 code the prose must be written in (lenient script check);
+- TOPIC_CHECK: callable(list[TopicRef]) raising ValueError (new-topic rules, see topics.py).
+"""
 
 import re
+from collections.abc import Callable
 from typing import Annotated, Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationInfo, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
+
+from video_digest.languages import check_script
 
 TIMESTAMP_PATTERN = r"^(?:\d{1,2}:[0-5]\d:[0-5]\d|[0-5]?\d:[0-5]\d)$"  # "mm:ss" or "h:mm:ss"
 TAG_PATTERN = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
-CYRILLIC_RE = re.compile(r"[а-яё]", re.IGNORECASE)
-SENTENCE_END_RE = re.compile(r"[.!?…]+(?=\s|$)")
+LANGUAGE_PATTERN = r"^[a-z]{2}$"  # ISO 639-1
+SENTENCE_END_RE = re.compile(r"[.!?…。]+(?=\s|$)")
 
 Timestamp = Annotated[str, StringConstraints(pattern=TIMESTAMP_PATTERN)]
 Tag = Annotated[str, StringConstraints(pattern=TAG_PATTERN)]
+LanguageCode = Annotated[str, StringConstraints(pattern=LANGUAGE_PATTERN)]
 Score = Annotated[int, Field(ge=0, le=10)]
 Verdict = Literal["watch_full", "summary_enough", "skip"]
 
-# Validation context key: set of allowed timestamps in seconds (chunk heading starts).
 ALLOWED_TIMESTAMPS = "allowed_timestamps"
+ANALYSIS_LANGUAGE = "analysis_language"
+TOPIC_CHECK = "topic_check"
 
 
 def timestamp_to_seconds(ts: str) -> int:
@@ -33,12 +52,6 @@ def seconds_to_timestamp(seconds: int) -> str:
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
-def _require_russian(value: str) -> str:
-    if not CYRILLIC_RE.search(value):
-        raise ValueError("must be written in Russian")
-    return value
-
-
 class StrictModel(BaseModel):
     """extra="forbid" -> additionalProperties: false, as strict structured output requires."""
 
@@ -46,15 +59,13 @@ class StrictModel(BaseModel):
 
 
 class KeyPoint(StrictModel):
-    text_ru: str = Field(min_length=1, description="The point, in Russian.")
+    text: str = Field(min_length=1, description="The point, in the analysis language.")
     timestamp: Timestamp = Field(description='Start of the chunk heading where it is said, "m:ss" or "h:mm:ss".')
-
-    _ru = field_validator("text_ru")(_require_russian)
 
 
 class ScoreWithReason(StrictModel):
     score: Score
-    justification: str = Field(min_length=1, description="One sentence.")
+    justification: str = Field(min_length=1, description="One sentence, in the analysis language.")
 
 
 class Scores(StrictModel):
@@ -65,50 +76,62 @@ class Scores(StrictModel):
 
 class BestMoment(StrictModel):
     timestamp: Timestamp
-    why_ru: str = Field(min_length=1, description="Why this moment is worth watching, in Russian.")
+    why: str = Field(min_length=1, description="Why this moment is worth watching, in the analysis language.")
 
-    _ru = field_validator("why_ru")(_require_russian)
+
+class TopicRef(StrictModel):
+    slug: Tag = Field(description="Lowercase English kebab-case, 1-3 words; reuse an existing slug when one fits.")
+    description: str = Field(description='Short English description; required for a new topic, "" for an existing one.')
 
 
 class VideoAnalysis(StrictModel):
-    source_language: Literal["ru", "en"]
-    summary_ru: str = Field(description="5-7 sentences in Russian, regardless of the source language.")
+    source_language: LanguageCode = Field(description="ISO 639-1 code of the transcript language.")
+    summary: str = Field(description="5-7 sentences in the analysis language.")
     key_points: list[KeyPoint] = Field(min_length=4, max_length=8)
-    topics: list[Tag] = Field(min_length=3, max_length=7, description="Lowercase English tags.")
-    entities: list[str] = Field(description="Tools, models, companies, libraries; canonical names.")
+    topics: list[TopicRef] = Field(min_length=3, max_length=7)
+    entities: list[str] = Field(description="Tools, models, companies, libraries; canonical names, never translated.")
     scores: Scores
     demo_confidence: Literal["low", "high"]
     needs_screen: bool
     needs_screen_evidence: str = Field(description="Short, no direct quotes.")
     best_moments: list[BestMoment] = Field(max_length=3)
     verdict: Verdict
-    verdict_reason_ru: str = Field(min_length=1, description="One sentence in Russian.")
+    verdict_reason: str = Field(min_length=1, description="One sentence in the analysis language.")
 
-    _ru = field_validator("verdict_reason_ru")(_require_russian)
-
-    @field_validator("summary_ru")
+    @field_validator("summary")
     @classmethod
-    def _summary(cls, value: str) -> str:
-        _require_russian(value)
-        # Loose bounds: abbreviations like "т.е." make exact sentence counting unreliable.
+    def _summary_length(cls, value: str) -> str:
+        # Loose bounds: abbreviations make exact sentence counting unreliable.
         sentences = len(SENTENCE_END_RE.findall(value.strip()))
         if not 3 <= sentences <= 10:
             raise ValueError(f"must be 5-7 sentences, got about {sentences}")
         return value
 
+    @field_validator("topics")
+    @classmethod
+    def _unique_topics(cls, value: list[TopicRef]) -> list[TopicRef]:
+        slugs = [t.slug for t in value]
+        if len(set(slugs)) != len(slugs):
+            raise ValueError("topic slugs must be unique")
+        return value
+
     @model_validator(mode="after")
-    def _timestamps_from_headings(self, info: ValidationInfo) -> Self:
+    def _context_checks(self, info: ValidationInfo) -> Self:
         context: dict[str, Any] = info.context or {}
         allowed: set[int] | None = context.get(ALLOWED_TIMESTAMPS)
-        if allowed is None:
-            return self
-        used = [kp.timestamp for kp in self.key_points] + [bm.timestamp for bm in self.best_moments]
-        bad = sorted({ts for ts in used if timestamp_to_seconds(ts) not in allowed})
-        if bad:
-            options = ", ".join(seconds_to_timestamp(s) for s in sorted(allowed))
-            raise ValueError(f"timestamps {bad} are not chunk heading starts; use one of: {options}")
+        if allowed is not None:
+            used = [kp.timestamp for kp in self.key_points] + [bm.timestamp for bm in self.best_moments]
+            bad = sorted({ts for ts in used if timestamp_to_seconds(ts) not in allowed})
+            if bad:
+                options = ", ".join(seconds_to_timestamp(s) for s in sorted(allowed))
+                raise ValueError(f"timestamps {bad} are not chunk heading starts; use one of: {options}")
+        language: str | None = context.get(ANALYSIS_LANGUAGE)
+        if language:
+            try:
+                check_script(self.summary, language)
+            except ValueError as exc:
+                raise ValueError(f"summary {exc}") from exc
+        topic_check: Callable[[list[TopicRef]], None] | None = context.get(TOPIC_CHECK)
+        if topic_check:
+            topic_check(self.topics)
         return self
-
-
-def json_schema(model: type[BaseModel]) -> dict[str, Any]:
-    return model.model_json_schema()
