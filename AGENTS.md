@@ -1,50 +1,49 @@
 # AGENTS.md
 
-## Goal
-Transcripts of neural-network videos -> LLM summaries, scores, topic clusters ->
-weekly digest with a verdict per video: watch fully / summary is enough / skip.
+video-digest turns YouTube videos about neural networks (Russian and English) into a weekly
+digest: summary, scores, topics and a verdict per video (watch fully / summary is enough / skip).
 
-## Structure
+## Safety rules
+- Never make real requests to YouTube (`ingest`, yt-dlp) unless the user asks:
+  the user's IP was rate-limited by YouTube once.
+- Never call paid LLM APIs (`summarize`, translating `export-review`, anything using `llm()`)
+  unless the user asks: it costs money. Tests use fakes only, never the network.
+- Never print or commit API keys or the contents of `.env`.
+- Do not push and do not merge; the user merges (squash PRs).
+- One stage at a time (spec/pipeline.md); never build ahead of the current stage.
+
+## Commands
 ```
-videos.txt              input: one video URL per line, # = comment
-data/raw/               raw subtitle files, json3 (git-ignored)
-data/transcripts/       <video_id>.md: frontmatter + time chunks (git-ignored)
-data/db.sqlite          videos + analyses, the LLM cache (git-ignored)
-data/review_blind.md    blind human ratings (tracked); review_model.md ignored
-topics.txt              topic taxonomy `slug: description` (tracked, grows)
-digests/                generated weekly digests
-src/video_digest/
-  config.py             settings from .env (paths, Qdrant URL, LLM config)
-  cli.py                typer app, `uv run video-digest <command>`
-  ingest.py             stage 1: videos.txt -> transcripts (yt-dlp)
-  llm.py                llm(): the only way to call an LLM
-  summarize.py          stage 2 (+ transcripts, schema, features, topics, db)
-  review.py, translate.py  export-review/calibrate; display translation (cached)
-  prompts/              summarize_v2.md (PROMPT_VERSION), translate_v1.md, glossary.txt
-tests/                  pytest; fixtures/fakes only, never real network
+uv sync                                               install dependencies
+uv run pytest                                         offline tests
+uvx pyright --pythonpath .venv/bin/python src tests   type check
+uv run video-digest ingest                            videos.txt -> transcripts (YouTube!)
+uv run video-digest summarize                         LLM analysis per transcript (paid)
+uv run video-digest export-review                     review files (paid if it translates)
+uv run video-digest calibrate                         blind ratings vs the model
+uv run video-digest topics                            topic slugs with usage counts
+uv run video-digest topics merge OLD NEW              merge topic OLD into NEW
 ```
 
-## Rules
-- Python 3.12, managed with uv (`uv add`, `uv run`). No pip.
-- Type hints everywhere; pydantic for schemas; settings only via `config.py`.
-- Every LLM call goes through `llm()` (OpenAI-compatible client); base URL, key
-  and models (FAST: summaries, SMART: clusters/digest) only from `config.py`.
-- Cache by sha256(transcript + PROMPT_VERSION + model + analysis language) in
-  db.sqlite; never re-call for a cached key. A prompt change = new file + version.
-- ANALYSIS_LANGUAGE (code or "source") = language of stored analyses;
-  DIGEST_LANGUAGE = what the user reads, via translate() (not in the cache key).
-  Never translate terms (names, commands, acronyms); topic slugs are English.
-- topics.txt is mutable state, NOT in the cache key: results depend on processing
-  order, and --force re-runs use the grown list. Code, not the model, decides
-  what is new (exact/normalized/near-duplicate match).
-- demo_value uses text hints only and is flagged by demo_confidence.
-- Tests never call real APIs: fake clients only.
-- Every feature (command, option, setting, file) is documented in README.md.
-- YouTube: never request translated auto-captions (HTTP 429); one own-language
-  track per video. All yt-dlp calls go through `make_ydl()` in ingest.py.
-- Never commit `.env`, transcripts, the database or Qdrant data (data/qdrant/).
+## What to read when
+- Every session: spec/status.md, then spec/pipeline.md.
+- Before changing ANY file: find it in the code map in spec/README.md and read the spec
+  files listed there, including "Working on this code".
+- A new file under src/, tests/ or spec/ gets a row in the code map in the same commit, no
+  question needed. A file anywhere else, or an existing tracked file missing from the map:
+  ask first.
+- Something looks odd or over-built: spec/decisions.md (Pitfalls at the end).
+- Prompts, rubric, glossary: src/video_digest/prompts/. Topics: topics.txt.
 
-## Stages
-Work strictly one stage at a time. Never build ahead of the current stage:
-no scripts, modules or dependencies for future stages until asked.
-Current stage: 2 (summaries, scores, languages, topics).
+## Sync rule
+- Any change in behavior updates the matching spec file in the same commit.
+- A changed data format updates spec/data-contracts.md first, then the code.
+- Spec and code disagree = bug: fix one of them in the same commit.
+- User-facing features are also documented in README.md.
+
+## Code rules
+- Python 3.12 + uv, type hints everywhere, pydantic for schemas, settings only via config.py.
+- All LLM calls go through `llm()` (src/video_digest/llm.py); all yt-dlp calls through
+  `make_ydl()` (src/video_digest/ingest.py).
+
+Details: spec/README.md.
