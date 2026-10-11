@@ -1,0 +1,14 @@
+OpenCode
+Claude Code
+Claude Mem
+MCP
+RAG
+LlamaIndex
+Qdrant
+Ollama
+Gemini
+Whisper
+NotebookLM
+LangChain
+Bun
+SQLite

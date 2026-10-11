@@ -1,0 +1,41 @@
+"""Shared test data. All tests are offline."""
+
+import copy
+from typing import Any
+
+import pytest
+
+VALID_ANALYSIS: dict[str, Any] = {
+    "source_language": "en",
+    "summary_ru": (
+        "Автор показывает, как подключить Claude Mem к OpenCode. "
+        "Плагин сохраняет память между сессиями агента. "
+        "Установка занимает одну команду в терминале. "
+        "Затем автор сравнивает расход токенов до и после. "
+        "Экономия получается примерно десятикратной."
+    ),
+    "key_points": [
+        {"text_ru": "Агент забывает контекст между сессиями.", "timestamp": "0:00"},
+        {"text_ru": "Claude Mem хранит память в SQLite.", "timestamp": "2:00"},
+        {"text_ru": "Установка одной командой через npx.", "timestamp": "4:00"},
+        {"text_ru": "Расход токенов падает в десять раз.", "timestamp": "6:00"},
+    ],
+    "topics": ["coding-agents", "memory", "ai-tools"],
+    "entities": ["OpenCode", "Claude Mem", "SQLite"],
+    "scores": {
+        "practical_value": {"score": 7, "justification": "Concrete install steps."},
+        "information_density": {"score": 6, "justification": "Steady signal."},
+        "demo_value": {"score": 4, "justification": "Some terminal work described."},
+    },
+    "demo_confidence": "high",
+    "needs_screen": False,
+    "needs_screen_evidence": "Commands are spoken in full.",
+    "best_moments": [{"timestamp": "4:00", "why_ru": "Пошаговая установка."}],
+    "verdict": "summary_enough",
+    "verdict_reason_ru": "Главное умещается в саммари.",
+}
+
+
+@pytest.fixture
+def analysis_data() -> dict[str, Any]:
+    return copy.deepcopy(VALID_ANALYSIS)
