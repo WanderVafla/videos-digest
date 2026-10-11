@@ -1,0 +1,425 @@
+{
+ "wireMagic": "pb3",
+ "pens": [
+  {}
+ ],
+ "wsWinStyles": [
+  {},
+  {
+   "mhModeHint": 2,
+   "juJustifCode": 0,
+   "sdScrollDir": 3
+  }
+ ],
+ "wpWinPositions": [
+  {},
+  {
+   "apPoint": 6,
+   "ahHorPos": 20,
+   "avVerPos": 100,
+   "rcRows": 2,
+   "ccCols": 40
+  }
+ ],
+ "events": [
+  {
+   "tStartMs": 0,
+   "dDurationMs": 567040,
+   "id": 1,
+   "wpWinPosId": 1,
+   "wsWinStyleId": 1
+  },
+  {
+   "tStartMs": 367440,
+   "dDurationMs": 8960,
+   "wWinId": 1,
+   "segs": [
+    {
+     "utf8": "Вот.",
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " Вот",
+     "tOffsetMs": 640,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " мы",
+     "tOffsetMs": 800,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " получили",
+     "tOffsetMs": 1000,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " ээ",
+     "tOffsetMs": 2000,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " дизайн",
+     "tOffsetMs": 3240,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " готовый,",
+     "tOffsetMs": 3680,
+     "acAsrConf": 0
+    }
+   ]
+  },
+  {
+   "tStartMs": 372469,
+   "dDurationMs": 3931,
+   "wWinId": 1,
+   "aAppend": 1,
+   "segs": [
+    {
+     "utf8": "\n"
+    }
+   ]
+  },
+  {
+   "tStartMs": 372479,
+   "dDurationMs": 6801,
+   "wWinId": 1,
+   "segs": [
+    {
+     "utf8": "да?",
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " Значит,",
+     "tOffsetMs": 1401,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " мы",
+     "tOffsetMs": 1801,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " просто",
+     "tOffsetMs": 2160,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " копируем",
+     "tOffsetMs": 2481,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " его",
+     "tOffsetMs": 2921,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " HTML",
+     "tOffsetMs": 3160,
+     "acAsrConf": 0
+    }
+   ]
+  },
+  {
+   "tStartMs": 376390,
+   "dDurationMs": 2890,
+   "wWinId": 1,
+   "aAppend": 1,
+   "segs": [
+    {
+     "utf8": "\n"
+    }
+   ]
+  },
+  {
+   "tStartMs": 376400,
+   "dDurationMs": 5880,
+   "wWinId": 1,
+   "segs": [
+    {
+     "utf8": "прекрасным",
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " образом,",
+     "tOffsetMs": 560,
+     "acAsrConf": 0
+    }
+   ]
+  },
+  {
+   "tStartMs": 379270,
+   "dDurationMs": 3010,
+   "wWinId": 1,
+   "aAppend": 1,
+   "segs": [
+    {
+     "utf8": "\n"
+    }
+   ]
+  },
+  {
+   "tStartMs": 379280,
+   "dDurationMs": 3000,
+   "wWinId": 1,
+   "segs": [
+    {
+     "utf8": "да.",
+     "acAsrConf": 0
+    }
+   ]
+  },
+  {
+   "tStartMs": 382950,
+   "wWinId": 1,
+   "aAppend": 1,
+   "segs": [
+    {
+     "utf8": "\n"
+    }
+   ]
+  },
+  {
+   "tStartMs": 382960,
+   "dDurationMs": 3000,
+   "wWinId": 1,
+   "segs": [
+    {
+     "utf8": "Угу.",
+     "acAsrConf": 0
+    }
+   ]
+  },
+  {
+   "tStartMs": 402070,
+   "wWinId": 1,
+   "aAppend": 1,
+   "segs": [
+    {
+     "utf8": "\n"
+    }
+   ]
+  },
+  {
+   "tStartMs": 402080,
+   "dDurationMs": 3239,
+   "wWinId": 1,
+   "segs": [
+    {
+     "utf8": "Да,",
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " конечно.",
+     "tOffsetMs": 239,
+     "acAsrConf": 0
+    }
+   ]
+  },
+  {
+   "tStartMs": 415390,
+   "wWinId": 1,
+   "aAppend": 1,
+   "segs": [
+    {
+     "utf8": "\n"
+    }
+   ]
+  },
+  {
+   "tStartMs": 415400,
+   "dDurationMs": 3960,
+   "wWinId": 1,
+   "segs": [
+    {
+     "utf8": "Какую",
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " мы",
+     "tOffsetMs": 239,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " проблему",
+     "tOffsetMs": 400,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " решаем",
+     "tOffsetMs": 720,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " за",
+     "tOffsetMs": 1040,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " счёт",
+     "tOffsetMs": 1160,
+     "acAsrConf": 0
+    }
+   ]
+  },
+  {
+   "tStartMs": 416869,
+   "dDurationMs": 2491,
+   "wWinId": 1,
+   "aAppend": 1,
+   "segs": [
+    {
+     "utf8": "\n"
+    }
+   ]
+  },
+  {
+   "tStartMs": 416879,
+   "dDurationMs": 5241,
+   "wWinId": 1,
+   "segs": [
+    {
+     "utf8": "стороннего",
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " приложения",
+     "tOffsetMs": 481,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " для",
+     "tOffsetMs": 1000,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " дизайна?",
+     "tOffsetMs": 1241,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " Это",
+     "tOffsetMs": 2281,
+     "acAsrConf": 0
+    }
+   ]
+  },
+  {
+   "tStartMs": 419350,
+   "dDurationMs": 2770,
+   "wWinId": 1,
+   "aAppend": 1,
+   "segs": [
+    {
+     "utf8": "\n"
+    }
+   ]
+  },
+  {
+   "tStartMs": 419360,
+   "dDurationMs": 4559,
+   "wWinId": 1,
+   "segs": [
+    {
+     "utf8": "то,",
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " что",
+     "tOffsetMs": 239,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " вла",
+     "tOffsetMs": 920,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " очень",
+     "tOffsetMs": 1440,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " много",
+     "tOffsetMs": 1679,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " кредитов",
+     "tOffsetMs": 1920,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " жрётся",
+     "tOffsetMs": 2360,
+     "acAsrConf": 0
+    }
+   ]
+  },
+  {
+   "tStartMs": 422110,
+   "dDurationMs": 1809,
+   "wWinId": 1,
+   "aAppend": 1,
+   "segs": [
+    {
+     "utf8": "\n"
+    }
+   ]
+  },
+  {
+   "tStartMs": 422120,
+   "dDurationMs": 4560,
+   "wWinId": 1,
+   "segs": [
+    {
+     "utf8": "как",
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " раз-таки",
+     "tOffsetMs": 120,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " на",
+     "tOffsetMs": 400,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " вот",
+     "tOffsetMs": 519,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " эти",
+     "tOffsetMs": 680,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " какие-то",
+     "tOffsetMs": 880,
+     "acAsrConf": 0
+    },
+    {
+     "utf8": " Fune",
+     "tOffsetMs": 1320,
+     "acAsrConf": 0
+    }
+   ]
+  },
+  {
+   "tStartMs": 423909,
+   "dDurationMs": 2771,
+   "wWinId": 1,
+   "aAppend": 1,
+   "segs": [
+    {
+     "utf8": "\n"
+    }
+   ]
+  }
+ ]
+}
